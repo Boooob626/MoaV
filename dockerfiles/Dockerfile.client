@@ -2,7 +2,7 @@
 # MoaV Client - Multi-protocol client for testing and connecting
 # =============================================================================
 # Supports: Reality, Trojan, Hysteria2, WireGuard (via wstunnel),
-#           AmneziaWG, dnstt, TrustTunnel, Tor/Snowflake
+#           AmneziaWG, dnstt, Slipstream, TrustTunnel, Tor/Snowflake
 #
 # Strategy: Download pre-built binaries with proper architecture detection
 # =============================================================================
@@ -107,6 +107,16 @@ COPY --from=dnstt-builder /dnstt-client /usr/local/bin/dnstt-client
 RUN chmod +x /usr/local/bin/dnstt-client 2>/dev/null && \
     echo "dnstt-client installed" || \
     echo "dnstt-client: not available (optional)"
+
+# slipstream-client: download pre-built binary
+ARG SLIPSTREAM_VERSION=2026.02.22.1
+RUN ARCH=$(cat /tmp/arch) && \
+    echo "Downloading slipstream-client for ${ARCH}..." && \
+    wget -qO /usr/local/bin/slipstream-client \
+    "https://github.com/net2share/slipstream-rust-build/releases/download/v${SLIPSTREAM_VERSION}/slipstream-client-linux-${ARCH}" && \
+    chmod +x /usr/local/bin/slipstream-client && \
+    echo "slipstream-client ${SLIPSTREAM_VERSION} installed (${ARCH})" || \
+    echo "slipstream-client: download failed (optional, needed for Slipstream DNS tunnel)"
 
 # trusttunnel-client: download CLI client from TrustTunnelClient repo
 # TrustTunnelClient uses: linux-x86_64, linux-aarch64

@@ -73,6 +73,13 @@ configs/trusttunnel/vpn.toml
 configs/trusttunnel/hosts.toml
 configs/trusttunnel/credentials.toml
 
+# Slipstream generated files
+configs/slipstream/cert.pem
+configs/slipstream/key.pem
+
+# DNS router
+configs/dns-router/
+
 # Generic patterns for generated secrets
 *.key
 *.key.hex

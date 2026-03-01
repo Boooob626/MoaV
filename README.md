@@ -8,7 +8,7 @@ Multi-protocol censorship circumvention stack optimized for hostile network envi
 
 ## Features
 
-- **Multiple protocols** - Reality (VLESS), Trojan, Hysteria2, TrustTunnel, WireGuard (direct & wstunnel), DNS tunnel
+- **Multiple protocols** - Reality (VLESS), Trojan, Hysteria2, TrustTunnel, WireGuard (direct & wstunnel), DNS tunnels (dnstt + Slipstream)
 - **Stealth-first** - All traffic looks like normal HTTPS, WebSocket, or DNS
 - **Per-user credentials** - Create, revoke, and manage users independently
 - **Easy deployment** - Docker Compose based, single command setup
@@ -133,7 +133,8 @@ See [docs/SETUP.md](docs/SETUP.md) for complete setup instructions.
 | WireGuard (Direct) | 51820/udp | ★★★☆☆ | ★★★★★ | Full VPN, simple setup |
 | AmneziaWG | 51821/udp | ★★★★★ | ★★★★☆ | Obfuscated WireGuard, defeats DPI |
 | WireGuard (wstunnel) | 8080/tcp | ★★★★☆ | ★★★★☆ | VPN when UDP is blocked |
-| DNS Tunnel | 53/udp | ★★★☆☆ | ★☆☆☆☆ | Last resort, hard to block |
+| DNS Tunnel (dnstt) | 53/udp | ★★★☆☆ | ★☆☆☆☆ | Last resort, hard to block |
+| Slipstream | 53/udp | ★★★☆☆ | ★★☆☆☆ | QUIC-over-DNS, 1.5-5x faster than dnstt |
 | Psiphon | - | ★★★★☆ | ★★★☆☆ | Standalone, no server needed |
 | Tor (Snowflake) | - | ★★★★☆ | ★★☆☆☆ | Standalone, uses Tor network |
 
@@ -184,7 +185,7 @@ moav logs conduit         # View specific service logs
 moav build                # Build/rebuild all containers
 ```
 
-**Profiles:** `proxy`, `wireguard`, `amneziawg`, `dnstt`, `trusttunnel`, `admin`, `conduit`, `snowflake`, `monitoring`, `all`
+**Profiles:** `proxy`, `wireguard`, `amneziawg`, `dnstunnel`, `trusttunnel`, `admin`, `conduit`, `snowflake`, `monitoring`, `all`
 
 ## Server Migration
 
@@ -215,7 +216,7 @@ moav test user1           # Test all protocols for user1
 moav test user1 --json    # Output results as JSON
 ```
 
-Tests Reality, Trojan, Hysteria2, TrustTunnel, WireGuard, and dnstt. Reports pass/fail/skip for each protocol.
+Tests Reality, Trojan, Hysteria2, TrustTunnel, WireGuard, dnstt, and Slipstream. Reports pass/fail/skip for each protocol.
 
 ### Client Mode
 
@@ -231,14 +232,14 @@ The client exposes:
 - SOCKS5 proxy on port 1080 (configurable via `CLIENT_SOCKS_PORT`)
 - HTTP proxy on port 8080 (configurable via `CLIENT_HTTP_PORT`)
 
-Available protocols: `reality`, `trojan`, `hysteria2`, `trusttunnel`, `wireguard`, `dnstt`, `psiphon`, `tor`
+Available protocols: `reality`, `trojan`, `hysteria2`, `trusttunnel`, `wireguard`, `dnstt`, `slipstream`, `psiphon`, `tor`
 
 Build the client image separately:
 ```bash
 moav client build
 ```
 
-**Service aliases:** `conduit`→psiphon-conduit, `singbox`→sing-box, `wg`→wireguard, `dns`→dnstt
+**Service aliases:** `conduit`→psiphon-conduit, `singbox`→sing-box, `wg`→wireguard, `dns/dnstt/slip`→dnstunnel
 
 ## Conduit Management
 

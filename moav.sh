@@ -500,9 +500,10 @@ check_prerequisites() {
                     printf "  %-8s %-12s %-20s %s\n" "────" "────" "─────" "────"
                     printf "  %-8s %-12s %-20s %s\n" "A" "@" "$detected_ip" "DNS only (gray)"
                     echo ""
-                    echo -e "  ${WHITE}For DNS Tunnel (dnstt):${NC}"
+                    echo -e "  ${WHITE}For DNS Tunnels (dnstt + Slipstream):${NC}"
                     printf "  %-8s %-12s %-20s %s\n" "A" "dns" "$detected_ip" "DNS only (gray)"
                     printf "  %-8s %-12s %-20s %s\n" "NS" "t" "dns.$input_domain" "-"
+                    printf "  %-8s %-12s %-20s %s\n" "NS" "s" "dns.$input_domain" "-"
                     echo ""
                     echo -e "  ${WHITE}Optional - CDN Mode (Cloudflare proxied):${NC}"
                     printf "  %-8s %-12s %-20s %s\n" "A" "cdn" "$detected_ip" "Proxied (orange)"
@@ -531,7 +532,7 @@ check_prerequisites() {
                     echo ""
                     echo -e "  ${YELLOW}Services that require a domain (will be disabled):${NC}"
                     echo "    • Reality, Trojan, Hysteria2 (sing-box proxy)"
-                    echo "    • DNS tunnel (dnstt)"
+                    echo "    • DNS tunnels (dnstt + Slipstream)"
                     echo "    • Admin dashboard with HTTPS"
                     echo ""
                     echo -e "  ${GREEN}Services that work without a domain:${NC}"
@@ -546,7 +547,7 @@ check_prerequisites() {
                         sed -i "s|^DEFAULT_PROFILES=.*|DEFAULT_PROFILES=\"wireguard admin conduit snowflake\"|" .env
                         # Disable all protocols that need domain (admin works with self-signed cert)
                         # Use grep to check if line exists, then sed to replace, or append if missing
-                        for var in ENABLE_REALITY ENABLE_TROJAN ENABLE_HYSTERIA2 ENABLE_DNSTT ENABLE_TRUSTTUNNEL; do
+                        for var in ENABLE_REALITY ENABLE_TROJAN ENABLE_HYSTERIA2 ENABLE_DNSTT ENABLE_SLIPSTREAM ENABLE_TRUSTTUNNEL; do
                             if grep -q "^${var}=" .env 2>/dev/null; then
                                 sed -i "s|^${var}=.*|${var}=false|" .env
                             else
@@ -813,6 +814,12 @@ do_uninstall() {
             rm -f "$SCRIPT_DIR/configs/dnstt/"*.key 2>/dev/null
             rm -f "$SCRIPT_DIR/configs/dnstt/"*.key.hex 2>/dev/null
             echo "  - configs/dnstt/*"
+        fi
+
+        # Remove generated Slipstream files
+        if [[ -f "$SCRIPT_DIR/configs/slipstream/cert.pem" ]]; then
+            rm -f "$SCRIPT_DIR/configs/slipstream/cert.pem" 2>/dev/null
+            echo "  - configs/slipstream/*"
         fi
 
         # Remove generated WireGuard files
@@ -1169,6 +1176,7 @@ check_component_versions() {
         "SNOWFLAKE_VERSION"
         "TRUSTTUNNEL_VERSION"
         "TRUSTTUNNEL_CLIENT_VERSION"
+        "SLIPSTREAM_VERSION"
     )
 
     local updates_available=()
@@ -1198,6 +1206,7 @@ check_component_versions() {
                         services_to_rebuild+=("trusttunnel")
                     fi
                     ;;
+                SLIPSTREAM_VERSION) services_to_rebuild+=("slipstream") ;;
             esac
         fi
     done
@@ -1338,8 +1347,8 @@ run_bootstrap() {
     echo ""
 
     if select_profiles "save"; then
-        # Check DNS setup if dnstt is selected
-        check_dns_for_dnstt
+        # Check DNS setup if DNS tunnels are selected
+        check_dns_for_dnstunnel
 
         echo ""
         info "Building selected services..."
@@ -1379,20 +1388,20 @@ run_bootstrap() {
 }
 
 # =============================================================================
-# DNS Setup (for dnstt)
+# DNS Setup (for DNS tunnels - dnstt + Slipstream)
 # =============================================================================
 
-check_dns_for_dnstt() {
-    # Check if dnstt is in selected profiles
-    local has_dnstt=false
+check_dns_for_dnstunnel() {
+    # Check if dnstunnel is in selected profiles
+    local has_dnstunnel=false
     for p in "${SELECTED_PROFILES[@]}"; do
-        if [[ "$p" == "dnstt" || "$p" == "all" ]]; then
-            has_dnstt=true
+        if [[ "$p" == "dnstunnel" || "$p" == "all" ]]; then
+            has_dnstunnel=true
             break
         fi
     done
 
-    if ! $has_dnstt; then
+    if ! $has_dnstunnel; then
         return 0
     fi
 
@@ -1400,20 +1409,20 @@ check_dns_for_dnstt() {
     if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
         echo ""
         warn "Port 53 is in use (likely by systemd-resolved)"
-        echo "  dnstt requires port 53 to be free."
+        echo "  DNS tunnels (dnstt/Slipstream) require port 53 to be free."
         echo ""
 
         if confirm "Disable systemd-resolved and configure direct DNS?" "y"; then
             setup_dns_for_dnstt
         else
-            warn "dnstt may not work until port 53 is freed."
+            warn "DNS tunnels may not work until port 53 is freed."
             echo "  Run 'moav setup-dns' later to fix this."
         fi
     fi
 }
 
 setup_dns_for_dnstt() {
-    info "Setting up DNS for dnstt..."
+    info "Setting up DNS for DNS tunnels..."
 
     # Check if systemd-resolved is running
     if systemctl is-active systemd-resolved &>/dev/null; then
@@ -1435,16 +1444,16 @@ setup_dns_for_dnstt() {
     success "    DNS configured (1.1.1.1, 8.8.8.8)"
 
     echo ""
-    success "DNS setup complete. Port 53 is now available for dnstt."
+    success "DNS setup complete. Port 53 is now available for DNS tunnels."
 }
 
 cmd_setup_dns() {
-    print_section "Setup DNS for dnstt"
+    print_section "Setup DNS for DNS Tunnels"
 
     info "This will:"
     echo "  • Stop and disable systemd-resolved"
     echo "  • Configure direct DNS resolution (1.1.1.1, 8.8.8.8)"
-    echo "  • Free port 53 for dnstt"
+    echo "  • Free port 53 for DNS tunnels (dnstt + Slipstream)"
     echo ""
 
     if ! confirm "Continue?" "y"; then
@@ -1465,10 +1474,11 @@ get_running_services() {
 }
 
 show_versions() {
-    local singbox_ver wstunnel_ver conduit_ver
+    local singbox_ver wstunnel_ver conduit_ver slipstream_ver
     singbox_ver=$(get_component_version "SINGBOX_VERSION" "1.12.17")
     wstunnel_ver=$(get_component_version "WSTUNNEL_VERSION" "10.5.1")
     conduit_ver=$(get_component_version "CONDUIT_VERSION" "1.2.0")
+    slipstream_ver=$(get_component_version "SLIPSTREAM_VERSION" "2026.02.22.1")
 
     echo ""
     echo -e "${CYAN}MoaV${NC} v${VERSION}"
@@ -1484,6 +1494,7 @@ show_versions() {
     printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${GREEN}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "conduit" "$conduit_ver" "github.com/Psiphon-Inc/conduit"
     printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${DIM}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "snowflake" "latest" "torproject.org (built from src)"
     printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${DIM}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "dnstt" "latest" "bamsoftware.com (built from src)"
+    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${GREEN}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "slipstream" "$slipstream_ver" "github.com/Mygod/slipstream-rust"
     printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${DIM}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "wireguard" "alpine" "wireguard-tools package"
     echo -e "  ${CYAN}└──────────────┴──────────┴──────────────────────────────────┘${NC}"
     echo ""
@@ -1519,7 +1530,13 @@ show_status() {
             disabled_services["decoy"]=1
         fi
         [[ "$enable_wireguard" != "true" ]] && disabled_services["wireguard"]=1 && disabled_services["wstunnel"]=1
+        local enable_slipstream=$(grep "^ENABLE_SLIPSTREAM=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "false")
         [[ "$enable_dnstt" != "true" ]] && disabled_services["dnstt"]=1
+        [[ "$enable_slipstream" != "true" ]] && disabled_services["slipstream"]=1
+        # dns-router is disabled if both dnstt and slipstream are disabled
+        if [[ "$enable_dnstt" != "true" ]] && [[ "$enable_slipstream" != "true" ]]; then
+            disabled_services["dns-router"]=1
+        fi
         [[ "$enable_admin" != "true" ]] && disabled_services["admin"]=1
     fi
 
@@ -1691,7 +1708,7 @@ select_profiles() {
     local env_file="$SCRIPT_DIR/.env"
     local proxy_enabled=true
     local wg_enabled=true
-    local dnstt_enabled=true
+    local dnstunnel_enabled=true
     local amneziawg_enabled=true
     local trusttunnel_enabled=true
     local admin_enabled=true
@@ -1703,6 +1720,7 @@ select_profiles() {
         local enable_wireguard=$(grep "^ENABLE_WIREGUARD=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
         local enable_amneziawg=$(grep "^ENABLE_AMNEZIAWG=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
         local enable_dnstt=$(grep "^ENABLE_DNSTT=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
+        local enable_slipstream=$(grep "^ENABLE_SLIPSTREAM=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "false")
         local enable_trusttunnel=$(grep "^ENABLE_TRUSTTUNNEL=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
         local enable_admin=$(grep "^ENABLE_ADMIN_UI=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
 
@@ -1712,13 +1730,16 @@ select_profiles() {
         fi
         [[ "$enable_wireguard" != "true" ]] && wg_enabled=false
         [[ "$enable_amneziawg" != "true" ]] && amneziawg_enabled=false
-        [[ "$enable_dnstt" != "true" ]] && dnstt_enabled=false
+        # dnstunnel is disabled if both dnstt and slipstream are disabled
+        if [[ "$enable_dnstt" != "true" ]] && [[ "$enable_slipstream" != "true" ]]; then
+            dnstunnel_enabled=false
+        fi
         [[ "$enable_trusttunnel" != "true" ]] && trusttunnel_enabled=false
         [[ "$enable_admin" != "true" ]] && admin_enabled=false
     fi
 
     # Build menu lines with disabled indicators
-    local proxy_line wg_line amneziawg_line dnstt_line trusttunnel_line admin_line
+    local proxy_line wg_line amneziawg_line dnstunnel_line trusttunnel_line admin_line
 
     if [[ "$proxy_enabled" == "true" ]]; then
         proxy_line="  ${CYAN}│${NC}  ${GREEN}1${NC}   proxy        Reality, Trojan, Hysteria2 (v2ray apps)       ${CYAN}│${NC}"
@@ -1738,10 +1759,10 @@ select_profiles() {
         amneziawg_line="  ${CYAN}│${NC}  ${DIM}3   amneziawg    AmneziaWG (disabled)${NC}                         ${CYAN}│${NC}"
     fi
 
-    if [[ "$dnstt_enabled" == "true" ]]; then
-        dnstt_line="  ${CYAN}│${NC}  ${YELLOW}4${NC}   dnstt        DNS tunnel ${DIM}(slow, last resort)${NC}                ${CYAN}│${NC}"
+    if [[ "$dnstunnel_enabled" == "true" ]]; then
+        dnstunnel_line="  ${CYAN}│${NC}  ${YELLOW}4${NC}   dnstunnel    DNS tunnels ${DIM}(dnstt + Slipstream)${NC}               ${CYAN}│${NC}"
     else
-        dnstt_line="  ${CYAN}│${NC}  ${DIM}4   dnstt        DNS tunnel (disabled)${NC}                        ${CYAN}│${NC}"
+        dnstunnel_line="  ${CYAN}│${NC}  ${DIM}4   dnstunnel    DNS tunnels (disabled)${NC}                       ${CYAN}│${NC}"
     fi
 
     if [[ "$trusttunnel_enabled" == "true" ]]; then
@@ -1763,7 +1784,7 @@ select_profiles() {
     echo -e "$proxy_line"
     echo -e "$wg_line"
     echo -e "$amneziawg_line"
-    echo -e "$dnstt_line"
+    echo -e "$dnstunnel_line"
     echo -e "$trusttunnel_line"
     echo -e "$admin_line"
     echo -e "  ${CYAN}├─────────────────────────────────────────────────────────────────┤${NC}"
@@ -1799,6 +1820,7 @@ select_profiles() {
         local enable_wireguard=$(grep "^ENABLE_WIREGUARD=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
         local enable_amneziawg=$(grep "^ENABLE_AMNEZIAWG=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
         local enable_dnstt=$(grep "^ENABLE_DNSTT=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
+        local enable_slipstream=$(grep "^ENABLE_SLIPSTREAM=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "false")
         local enable_trusttunnel=$(grep "^ENABLE_TRUSTTUNNEL=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
         local enable_admin=$(grep "^ENABLE_ADMIN_UI=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "true")
 
@@ -1820,9 +1842,9 @@ select_profiles() {
             SELECTED_PROFILES+=("amneziawg")
         fi
 
-        # dnstt profile
-        if [[ "$enable_dnstt" == "true" ]]; then
-            SELECTED_PROFILES+=("dnstt")
+        # dnstunnel profile (dnstt + Slipstream)
+        if [[ "$enable_dnstt" == "true" ]] || [[ "$enable_slipstream" == "true" ]]; then
+            SELECTED_PROFILES+=("dnstunnel")
         fi
 
         # trusttunnel profile
@@ -1885,7 +1907,7 @@ select_profiles() {
                 1) SELECTED_PROFILES+=("proxy") ;;
                 2) SELECTED_PROFILES+=("wireguard") ;;
                 3) SELECTED_PROFILES+=("amneziawg") ;;
-                4) SELECTED_PROFILES+=("dnstt") ;;
+                4) SELECTED_PROFILES+=("dnstunnel") ;;
                 5) SELECTED_PROFILES+=("trusttunnel") ;;
                 6) SELECTED_PROFILES+=("admin") ;;
                 7) SELECTED_PROFILES+=("conduit") ;;
@@ -1895,16 +1917,16 @@ select_profiles() {
         done
     fi
 
-    # dnstt requires sing-box (proxy profile) to forward traffic
-    # Auto-add proxy if dnstt is selected but proxy isn't (only for start operations)
+    # DNS tunnels require sing-box (proxy profile) to forward traffic
+    # Auto-add proxy if dnstunnel is selected but proxy isn't (only for start operations)
     if [[ "$mode" != "stop" ]] && [[ "$mode" != "restart" ]]; then
-        local has_dnstt=false has_proxy=false
+        local has_dnstunnel=false has_proxy=false
         for p in "${SELECTED_PROFILES[@]}"; do
-            [[ "$p" == "dnstt" ]] && has_dnstt=true
+            [[ "$p" == "dnstunnel" ]] && has_dnstunnel=true
             [[ "$p" == "proxy" ]] && has_proxy=true
         done
-        if [[ "$has_dnstt" == "true" ]] && [[ "$has_proxy" == "false" ]]; then
-            info "dnstt requires proxy services - auto-adding proxy profile"
+        if [[ "$has_dnstunnel" == "true" ]] && [[ "$has_proxy" == "false" ]]; then
+            info "DNS tunnels require proxy services - auto-adding proxy profile"
             SELECTED_PROFILES+=("proxy")
         fi
     fi
@@ -2097,7 +2119,7 @@ start_services() {
     ensure_clash_api_secret "$profiles" || skip_monitoring=1
     if [[ $skip_monitoring -eq 1 ]]; then
         # Replace 'all' with individual profiles excluding monitoring
-        profiles="--profile proxy --profile wireguard --profile dnstt --profile trusttunnel --profile admin --profile conduit --profile snowflake"
+        profiles="--profile proxy --profile wireguard --profile dnstunnel --profile trusttunnel --profile admin --profile conduit --profile snowflake"
     fi
 
     echo ""
@@ -2716,11 +2738,11 @@ show_usage() {
     echo "  import FILE           Import config backup from file"
     echo "  migrate-ip NEW_IP     Update SERVER_IP and regenerate all configs"
     echo "  regenerate-users      Regenerate all user bundles with current .env"
-    echo "  setup-dns             Free port 53 for dnstt (disables systemd-resolved)"
+    echo "  setup-dns             Free port 53 for DNS tunnels (disables systemd-resolved)"
     echo ""
-    echo "Profiles: proxy, wireguard, amneziawg, dnstt, trusttunnel, admin, conduit, snowflake, client, all"
-    echo "Services: sing-box, decoy, wstunnel, wireguard, amneziawg, dnstt, trusttunnel, admin, psiphon-conduit, snowflake"
-    echo "Aliases:  proxy/singbox/reality→sing-box, wg→wireguard, awg→amneziawg, dns→dnstt, conduit→psiphon-conduit"
+    echo "Profiles: proxy, wireguard, amneziawg, dnstunnel, trusttunnel, admin, conduit, snowflake, client, all"
+    echo "Services: sing-box, decoy, wstunnel, wireguard, amneziawg, dns-router, dnstt, slipstream, trusttunnel, admin, psiphon-conduit, snowflake"
+    echo "Aliases:  proxy/singbox/reality→sing-box, wg→wireguard, awg→amneziawg, dns/dnstt/slip→dnstunnel, conduit→psiphon-conduit"
     echo ""
     echo "Examples:"
     echo "  moav                           # Interactive menu"
@@ -2767,7 +2789,7 @@ cmd_domainless() {
     echo ""
     echo -e "  ${YELLOW}Will be disabled:${NC}"
     echo "    • Reality, Trojan, Hysteria2 (sing-box proxy)"
-    echo "    • DNS tunnel (dnstt)"
+    echo "    • DNS tunnels (dnstt + Slipstream)"
     echo "    • Admin dashboard with HTTPS"
     echo ""
     echo -e "  ${GREEN}Will remain available:${NC}"
@@ -2793,7 +2815,7 @@ cmd_domainless() {
     fi
 
     # Disable TLS-based protocols (add if not present, update if present)
-    for var in ENABLE_REALITY ENABLE_TROJAN ENABLE_HYSTERIA2 ENABLE_DNSTT ENABLE_ADMIN_UI; do
+    for var in ENABLE_REALITY ENABLE_TROJAN ENABLE_HYSTERIA2 ENABLE_DNSTT ENABLE_SLIPSTREAM ENABLE_ADMIN_UI; do
         if grep -q "^${var}=" .env; then
             sed -i "s/^${var}=.*/${var}=false/" .env
         else
@@ -2930,7 +2952,7 @@ cmd_profiles() {
 
 cmd_start() {
     local profiles=""
-    local valid_profiles="proxy wireguard amneziawg dnstt trusttunnel admin conduit snowflake monitoring client all setup"
+    local valid_profiles="proxy wireguard amneziawg dnstunnel trusttunnel admin conduit snowflake monitoring client all setup"
 
     if [[ $# -eq 0 ]]; then
         # No arguments - check for DEFAULT_PROFILES in .env
@@ -2984,7 +3006,7 @@ cmd_start() {
     if [[ -z "$profiles" ]]; then
         error "No service selected"
         echo "Valid profiles: $valid_profiles"
-        echo "Aliases: sing-box/singbox/reality/trojan/hysteria→proxy, wg→wireguard, awg→amneziawg, dns→dnstt, grafana/prometheus→monitoring"
+        echo "Aliases: sing-box/singbox/reality/trojan/hysteria→proxy, wg→wireguard, awg→amneziawg, dns/dnstt/slip→dnstunnel, grafana/prometheus→monitoring"
         exit 1
     fi
 
@@ -3012,20 +3034,20 @@ cmd_start() {
     ensure_clash_api_secret "$profiles" || skip_monitoring=1
     if [[ $skip_monitoring -eq 1 ]]; then
         # Replace 'all' with individual profiles excluding monitoring
-        profiles="--profile proxy --profile wireguard --profile dnstt --profile trusttunnel --profile admin --profile conduit --profile snowflake"
+        profiles="--profile proxy --profile wireguard --profile dnstunnel --profile trusttunnel --profile admin --profile conduit --profile snowflake"
     fi
 
-    # Check port 53 if dnstt is being started
-    if echo "$profiles" | grep -qE "dnstt|all"; then
+    # Check port 53 if DNS tunnels are being started
+    if echo "$profiles" | grep -qE "dnstunnel|all"; then
         if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
             echo ""
             warn "Port 53 is in use (likely by systemd-resolved)"
-            echo "  dnstt requires port 53 to be free."
+            echo "  DNS tunnels (dnstt/Slipstream) require port 53 to be free."
             echo ""
             if confirm "Disable systemd-resolved and configure direct DNS?" "y"; then
                 setup_dns_for_dnstt
             else
-                warn "dnstt may fail to start. Run 'moav setup-dns' later to fix this."
+                warn "DNS tunnels may fail to start. Run 'moav setup-dns' later to fix this."
             fi
         fi
     fi
@@ -3062,8 +3084,8 @@ resolve_profile() {
             echo "wireguard" ;;
         awg)
             echo "amneziawg" ;;
-        dns)
-            echo "dnstt" ;;
+        dns|dnstt|slip|slipstream)
+            echo "dnstunnel" ;;
         psiphon)
             echo "conduit" ;;
         grafana|grafana-proxy|grafana-cdn|prometheus|metrics)
@@ -3082,6 +3104,8 @@ resolve_service() {
         wg)                           echo "wireguard" ;;
         ws|tunnel)                    echo "wstunnel" ;;
         dns)                          echo "dnstt" ;;
+        slip)                         echo "slipstream" ;;
+        dns-router|dnsrouter)         echo "dns-router" ;;
         snow|tor)                     echo "snowflake" ;;
         # Monitoring services (pass through or resolve aliases)
         grafana-cdn)                  echo "grafana-proxy" ;;
@@ -3129,11 +3153,13 @@ cmd_stop() {
             success "All services stopped!"
         fi
     else
-        # Check if argument is a profile name
-        local profiles="proxy wireguard amneziawg dnstt trusttunnel admin conduit snowflake monitoring"
+        # Check if argument is a profile name (resolve aliases first)
+        local resolved_arg
+        resolved_arg=$(resolve_profile "${args[0]}")
+        local profiles="proxy wireguard amneziawg dnstunnel trusttunnel admin conduit snowflake monitoring"
         local profile_match=""
         for p in $profiles; do
-            if [[ "${args[0]}" == "$p" ]]; then
+            if [[ "$resolved_arg" == "$p" ]]; then
                 profile_match="$p"
                 break
             fi
@@ -3174,11 +3200,13 @@ cmd_restart() {
         docker compose --profile all restart
         success "All services restarted!"
     elif [[ $# -eq 1 ]]; then
-        # Single argument - check if it's a profile name
-        local profiles="proxy wireguard dnstt trusttunnel admin conduit snowflake monitoring"
+        # Single argument - check if it's a profile name (resolve aliases first)
+        local resolved_arg
+        resolved_arg=$(resolve_profile "$1")
+        local profiles="proxy wireguard dnstunnel trusttunnel admin conduit snowflake monitoring"
         local profile_match=""
         for p in $profiles; do
-            if [[ "$1" == "$p" ]]; then
+            if [[ "$resolved_arg" == "$p" ]]; then
                 profile_match="$p"
                 break
             fi
@@ -3441,7 +3469,7 @@ cmd_build() {
         # Building them in parallel with 10+ other images saturates the network,
         # causing TLS handshake timeouts on module downloads.
         # Fix: build Go services sequentially first, then everything else in parallel.
-        local go_services="amneziawg dnstt snowflake"
+        local go_services="amneziawg dnstt dns-router snowflake"
         local buildable_services remaining_services
 
         # Get only services that have build: configs (excludes image-only services)
@@ -3464,11 +3492,13 @@ cmd_build() {
         docker compose --profile all build $no_cache $remaining_services
         success "All services built!"
     else
-        # Check if argument is a profile name
-        local profiles="proxy wireguard amneziawg dnstt trusttunnel admin conduit snowflake monitoring"
+        # Check if argument is a profile name (resolve aliases first)
+        local resolved_build_arg
+        resolved_build_arg=$(resolve_profile "${services_args[0]}")
+        local profiles="proxy wireguard amneziawg dnstunnel trusttunnel admin conduit snowflake monitoring"
         local profile_match=""
         for p in $profiles; do
-            if [[ "${services_args[0]}" == "$p" ]]; then
+            if [[ "$resolved_build_arg" == "$p" ]]; then
                 profile_match="$p"
                 break
             fi
@@ -3689,10 +3719,11 @@ cmd_test() {
         docker compose --profile client build client
     fi
 
-    # Run test (mount bundle + dnstt outputs for pubkey)
+    # Run test (mount bundle + dnstt/slipstream outputs)
     docker run --rm \
         -v "$(pwd)/$bundle_path:/config:ro" \
         -v "$(pwd)/outputs/dnstt:/dnstt:ro" \
+        -v "$(pwd)/outputs/slipstream:/slipstream:ro" \
         -e ENABLE_DEPRECATED_WIREGUARD_OUTBOUND=true \
         moav-client --test $json_flag $verbose_flag
 }
@@ -3730,7 +3761,7 @@ cmd_client() {
             if [[ -z "$user" ]]; then
                 error "Usage: moav client connect USERNAME [--protocol PROTOCOL]"
                 echo ""
-                echo "Protocols: auto, reality, trojan, hysteria2, wireguard, psiphon, tor, dnstt"
+                echo "Protocols: auto, reality, trojan, hysteria2, wireguard, psiphon, tor, dnstt, slipstream"
                 echo ""
                 echo "Available users:"
                 ls -1 outputs/bundles/ 2>/dev/null || echo "  No users found"
@@ -3764,12 +3795,13 @@ cmd_client() {
                 docker compose --profile client build client
             fi
 
-            # Run client in foreground (mount bundle + dnstt outputs for pubkey)
+            # Run client in foreground (mount bundle + dnstt/slipstream outputs)
             docker run --rm -it \
                 -p "$socks_port:1080" \
                 -p "$http_port:8080" \
                 -v "$(pwd)/$bundle_path:/config:ro" \
                 -v "$(pwd)/outputs/dnstt:/dnstt:ro" \
+                -v "$(pwd)/outputs/slipstream:/slipstream:ro" \
                 -e ENABLE_DEPRECATED_WIREGUARD_OUTBOUND=true \
                 moav-client --connect -p "$protocol"
             ;;
@@ -3915,6 +3947,13 @@ cmd_export() {
         info "  Exporting dnstt outputs..."
         mkdir -p "$export_dir/outputs/dnstt"
         cp -a outputs/dnstt/. "$export_dir/outputs/dnstt/" 2>/dev/null || true
+    fi
+
+    # 5b. Export slipstream outputs (cert for clients)
+    if [[ -d "outputs/slipstream" ]]; then
+        info "  Exporting slipstream outputs..."
+        mkdir -p "$export_dir/outputs/slipstream"
+        cp -a outputs/slipstream/. "$export_dir/outputs/slipstream/" 2>/dev/null || true
     fi
 
     # 6. Create manifest
@@ -4086,6 +4125,14 @@ cmd_import() {
         mkdir -p outputs/dnstt
         cp -a "$export_dir/outputs/dnstt/." outputs/dnstt/
         success "    dnstt outputs imported"
+    fi
+
+    # 5b. Import slipstream outputs
+    if [[ -d "$export_dir/outputs/slipstream" ]]; then
+        info "  Importing slipstream outputs..."
+        mkdir -p outputs/slipstream
+        cp -a "$export_dir/outputs/slipstream/." outputs/slipstream/
+        success "    slipstream outputs imported"
     fi
 
     # Cleanup
@@ -4280,6 +4327,12 @@ cmd_migrate_ip() {
                     rm -f "$user_dir/dnstt-instructions.txt.bak"
                 fi
 
+                # Update slipstream instructions
+                if [[ -f "$user_dir/slipstream-instructions.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/slipstream-instructions.txt"
+                    rm -f "$user_dir/slipstream-instructions.txt.bak"
+                fi
+
                 # Update README
                 if [[ -f "$user_dir/README.md" ]]; then
                     sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/README.md"
@@ -4453,6 +4506,8 @@ cmd_regenerate_users() {
     local enable_wireguard=$(grep -E '^ENABLE_WIREGUARD=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
     local enable_amneziawg=$(grep -E '^ENABLE_AMNEZIAWG=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
     local enable_dnstt=$(grep -E '^ENABLE_DNSTT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    local enable_slipstream=$(grep -E '^ENABLE_SLIPSTREAM=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    local slipstream_subdomain=$(grep -E '^SLIPSTREAM_SUBDOMAIN=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
     local enable_trusttunnel=$(grep -E '^ENABLE_TRUSTTUNNEL=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
 
     # Run the regeneration using bootstrap container
@@ -4473,6 +4528,8 @@ cmd_regenerate_users() {
             -e "ENABLE_WIREGUARD=${enable_wireguard:-true}" \
             -e "ENABLE_AMNEZIAWG=${enable_amneziawg:-true}" \
             -e "ENABLE_DNSTT=${enable_dnstt:-true}" \
+            -e "ENABLE_SLIPSTREAM=${enable_slipstream:-false}" \
+            -e "SLIPSTREAM_SUBDOMAIN=${slipstream_subdomain:-s}" \
             -e "ENABLE_TRUSTTUNNEL=${enable_trusttunnel:-true}" \
             bootstrap /app/generate-user.sh "$username" >/dev/null 2>&1; then
             echo -e "${GREEN}✓${NC}"
