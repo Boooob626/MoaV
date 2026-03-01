@@ -394,6 +394,44 @@ EOF
 fi
 
 # -----------------------------------------------------------------------------
+# Generate Slipstream instructions (shared for all users)
+# -----------------------------------------------------------------------------
+if [[ "${ENABLE_SLIPSTREAM:-false}" == "true" ]] && [[ -f "outputs/slipstream/cert.pem" ]]; then
+    SLIPSTREAM_DOMAIN="${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}"
+
+    # Copy cert to user bundle
+    cp "outputs/slipstream/cert.pem" "$OUTPUT_DIR/slipstream-cert.pem"
+
+    cat > "$OUTPUT_DIR/slipstream-instructions.txt" <<EOF
+# Slipstream DNS Tunnel Instructions
+# ====================================
+# QUIC-over-DNS tunnel - faster than dnstt (1.5-5x speedup).
+
+# Tunnel Domain:
+$SLIPSTREAM_DOMAIN
+
+# Certificate: slipstream-cert.pem (included in this bundle)
+
+# -------------------------
+# Option 1: Resolver Mode (RECOMMENDED - stealthier)
+# -------------------------
+
+# Download slipstream-client from:
+# https://github.com/net2share/slipstream-rust-build/releases
+
+# Run (creates a local SOCKS5 proxy on port 1080):
+slipstream-client --domain $SLIPSTREAM_DOMAIN --cert slipstream-cert.pem --dns-server 1.1.1.1:53 --socks-listen 127.0.0.1:1080
+
+# -------------------------
+# Option 2: Authoritative/Direct Mode (FASTER but less stealthy)
+# -------------------------
+
+# slipstream-client --domain $SLIPSTREAM_DOMAIN --cert slipstream-cert.pem --authoritative SERVER_IP:53 --socks-listen 127.0.0.1:1080
+EOF
+    log_info "✓ Slipstream instructions generated"
+fi
+
+# -----------------------------------------------------------------------------
 # Generate README.html from template
 # -----------------------------------------------------------------------------
 TEMPLATE_FILE="docs/client-guide-template.html"
@@ -438,6 +476,10 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
     DNSTT_DOMAIN="${DNSTT_SUBDOMAIN:-t}.${DOMAIN}"
     DNSTT_PUBKEY=$(cat "outputs/dnstt/server.pub" 2>/dev/null || echo "")
 
+    # Get Slipstream info
+    SLIPSTREAM_DOMAIN="${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}"
+    CONFIG_SLIPSTREAM=$(cat "$OUTPUT_DIR/slipstream-instructions.txt" 2>/dev/null || echo "")
+
     # Convert QR images to base64
     qr_to_base64() {
         local file="$1"
@@ -465,6 +507,7 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
     sed -i.bak "s|{{GENERATED_DATE}}|$GENERATED_DATE|g" "$OUTPUT_HTML"
     sed -i.bak "s|{{DNSTT_DOMAIN}}|$DNSTT_DOMAIN|g" "$OUTPUT_HTML"
     sed -i.bak "s|{{DNSTT_PUBKEY}}|$DNSTT_PUBKEY|g" "$OUTPUT_HTML"
+    sed -i.bak "s|{{SLIPSTREAM_DOMAIN}}|$SLIPSTREAM_DOMAIN|g" "$OUTPUT_HTML"
 
     # Python-based placeholder replacement - handles special chars and multiline safely
     replace_placeholder() {
@@ -551,6 +594,13 @@ with open(filepath, 'w') as f:
         replace_placeholder "{{CONFIG_AMNEZIAWG}}" "$CONFIG_AMNEZIAWG"
     else
         replace_placeholder "{{CONFIG_AMNEZIAWG}}" "No AmneziaWG config available"
+    fi
+
+    # Slipstream instructions
+    if [[ -n "${CONFIG_SLIPSTREAM:-}" ]]; then
+        replace_placeholder "{{CONFIG_SLIPSTREAM}}" "$CONFIG_SLIPSTREAM"
+    else
+        replace_placeholder "{{CONFIG_SLIPSTREAM}}" "Slipstream not enabled"
     fi
 
     # Clean up backup files

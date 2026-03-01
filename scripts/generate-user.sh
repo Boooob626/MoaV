@@ -10,6 +10,7 @@ source /app/lib/common.sh
 source /app/lib/wireguard.sh
 source /app/lib/amneziawg.sh
 source /app/lib/dnstt.sh
+source /app/lib/slipstream.sh
 
 # Default state directory if not set
 STATE_DIR="${STATE_DIR:-/state}"
@@ -412,6 +413,14 @@ if [[ "${ENABLE_DNSTT:-true}" == "true" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
+# Generate Slipstream instructions (if enabled)
+# -----------------------------------------------------------------------------
+if [[ "${ENABLE_SLIPSTREAM:-false}" == "true" ]]; then
+    slipstream_generate_client_instructions "$USER_ID" "$OUTPUT_DIR"
+    log_info "  - Slipstream instructions generated"
+fi
+
+# -----------------------------------------------------------------------------
 # Generate README.html from template
 # -----------------------------------------------------------------------------
 TEMPLATE_FILE="/docs/client-guide-template.html"
@@ -430,6 +439,10 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
     # Get dnstt info
     DNSTT_DOMAIN="${DNSTT_SUBDOMAIN:-t}.${DOMAIN}"
     DNSTT_PUBKEY=$(cat "$STATE_DIR/keys/dnstt-server.pub.hex" 2>/dev/null || echo "")
+
+    # Get Slipstream info
+    SLIPSTREAM_DOMAIN="${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}"
+    CONFIG_SLIPSTREAM=$(cat "$OUTPUT_DIR/slipstream-instructions.txt" 2>/dev/null || echo "")
 
     # Convert QR images to base64
     qr_to_base64() {
@@ -461,6 +474,7 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
     sed -i "s|{{GENERATED_DATE}}|$GENERATED_DATE|g" "$OUTPUT_HTML"
     sed -i "s|{{DNSTT_DOMAIN}}|$DNSTT_DOMAIN|g" "$OUTPUT_HTML"
     sed -i "s|{{DNSTT_PUBKEY}}|$DNSTT_PUBKEY|g" "$OUTPUT_HTML"
+    sed -i "s|{{SLIPSTREAM_DOMAIN}}|$SLIPSTREAM_DOMAIN|g" "$OUTPUT_HTML"
 
     # TrustTunnel password (same as user password) - escape special chars
     if [[ -n "${USER_PASSWORD:-}" ]]; then
@@ -570,6 +584,13 @@ with open(filepath, 'w') as f:
         replace_placeholder "{{CONFIG_AMNEZIAWG}}" "$CONFIG_AMNEZIAWG"
     else
         replace_placeholder "{{CONFIG_AMNEZIAWG}}" "No AmneziaWG config available"
+    fi
+
+    # Slipstream instructions
+    if [[ -n "${CONFIG_SLIPSTREAM:-}" ]]; then
+        replace_placeholder "{{CONFIG_SLIPSTREAM}}" "$CONFIG_SLIPSTREAM"
+    else
+        replace_placeholder "{{CONFIG_SLIPSTREAM}}" "Slipstream not enabled"
     fi
 
     log_info "  - README.html generated"

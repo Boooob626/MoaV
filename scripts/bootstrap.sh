@@ -11,6 +11,7 @@ source /app/lib/sing-box.sh
 source /app/lib/wireguard.sh
 source /app/lib/amneziawg.sh
 source /app/lib/dnstt.sh
+source /app/lib/slipstream.sh
 
 log_info "Starting MoaV bootstrap..."
 
@@ -36,6 +37,7 @@ domain_required=false
 [[ "${ENABLE_TROJAN:-true}" == "true" ]] && domain_required=true
 [[ "${ENABLE_HYSTERIA2:-true}" == "true" ]] && domain_required=true
 [[ "${ENABLE_DNSTT:-true}" == "true" ]] && domain_required=true
+[[ "${ENABLE_SLIPSTREAM:-false}" == "true" ]] && domain_required=true
 [[ "${ENABLE_TRUSTTUNNEL:-true}" == "true" ]] && domain_required=true
 
 if [[ "$domain_required" == "true" ]] && [[ -z "${DOMAIN:-}" ]]; then
@@ -236,6 +238,8 @@ export ENABLE_HYSTERIA2="${ENABLE_HYSTERIA2:-true}"
 export ENABLE_WIREGUARD="${ENABLE_WIREGUARD:-true}"
 export ENABLE_AMNEZIAWG="${ENABLE_AMNEZIAWG:-true}"
 export ENABLE_DNSTT="${ENABLE_DNSTT:-true}"
+export ENABLE_SLIPSTREAM="${ENABLE_SLIPSTREAM:-false}"
+export SLIPSTREAM_SUBDOMAIN="${SLIPSTREAM_SUBDOMAIN:-s}"
 export ENABLE_TRUSTTUNNEL="${ENABLE_TRUSTTUNNEL:-true}"
 # Construct CDN_DOMAIN from CDN_SUBDOMAIN + DOMAIN if not explicitly set
 if [[ -z "${CDN_DOMAIN:-}" && -n "${CDN_SUBDOMAIN:-}" && -n "${DOMAIN:-}" ]]; then
@@ -316,6 +320,26 @@ if [[ "${ENABLE_DNSTT:-true}" == "true" ]]; then
     fi
 else
     log_info "dnstt is disabled, skipping configuration"
+fi
+
+# -----------------------------------------------------------------------------
+# Generate Slipstream config (before creating users)
+# -----------------------------------------------------------------------------
+log_info "ENABLE_SLIPSTREAM=${ENABLE_SLIPSTREAM:-false}"
+if [[ "${ENABLE_SLIPSTREAM:-false}" == "true" ]]; then
+    log_info "Generating Slipstream configuration..."
+    if generate_slipstream_config; then
+        log_info "Slipstream configuration complete"
+        if [[ -f "$STATE_DIR/keys/slipstream-cert.pem" ]]; then
+            log_info "Slipstream certificate verified"
+        else
+            log_error "Slipstream certificate NOT found after generation!"
+        fi
+    else
+        log_error "Slipstream configuration FAILED"
+    fi
+else
+    log_info "Slipstream is disabled, skipping configuration"
 fi
 
 # -----------------------------------------------------------------------------

@@ -1057,6 +1057,133 @@ test_dnstt() {
     wait $pid 2>/dev/null || true
 }
 
+# Test Slipstream (QUIC-over-DNS tunnel)
+test_slipstream() {
+    log_info "Testing Slipstream (DNS tunnel)..."
+
+    local config_file=""
+    local detail=""
+
+    # Find slipstream instructions file
+    for f in "$CONFIG_DIR"/slipstream*.txt "$CONFIG_DIR"/*slipstream*; do
+        if [[ -f "$f" ]]; then
+            config_file="$f"
+            break
+        fi
+    done
+
+    if [[ -z "$config_file" ]]; then
+        detail="No Slipstream config found in bundle"
+        log_warn "$detail"
+        RESULTS[slipstream]="skip"
+        DETAILS[slipstream]="$detail"
+        return
+    fi
+
+    log_debug "Using config: $config_file"
+
+    # Extract domain (e.g., s.example.com)
+    local domain=$(grep -oE 's\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$config_file" 2>/dev/null | head -1 || true)
+
+    if [[ -z "$domain" ]]; then
+        detail="Could not extract Slipstream tunnel domain from config"
+        log_error "$detail"
+        RESULTS[slipstream]="fail"
+        DETAILS[slipstream]="$detail"
+        return
+    fi
+
+    # Find cert file
+    local cert_file=""
+    for f in "$CONFIG_DIR"/slipstream-cert.pem "/slipstream/cert.pem"; do
+        [[ -f "$f" ]] && cert_file="$f" && break
+    done
+
+    if [[ -z "$cert_file" ]]; then
+        detail="Slipstream certificate not found"
+        log_warn "$detail"
+        RESULTS[slipstream]="warn"
+        DETAILS[slipstream]="Domain: $domain, but missing cert for full test"
+        return
+    fi
+
+    # Check if slipstream-client is available
+    if ! command -v slipstream-client >/dev/null 2>&1; then
+        RESULTS[slipstream]="warn"
+        DETAILS[slipstream]="slipstream-client not available, config looks valid for $domain"
+        return
+    fi
+
+    log_debug "Starting slipstream-client tunnel..."
+    local error_log="$TEMP_DIR/slipstream-error.log"
+
+    # Start slipstream-client in resolver mode
+    # slipstream-client is a TCP tunnel: local TCP port → DNS tunnel → server's sing-box:1080 (SOCKS5)
+    slipstream-client --domain "$domain" --cert "$cert_file" --resolver 1.1.1.1:53 --tcp-listen-host 127.0.0.1 --tcp-listen-port 10804 2>"$error_log" &
+    local pid=$!
+
+    # Give it time to establish the tunnel
+    sleep 5
+
+    if ! kill -0 $pid 2>/dev/null; then
+        detail="slipstream-client failed to start"
+        if [[ -s "$error_log" ]]; then
+            local error_msg
+            error_msg=$(tail -3 "$error_log" 2>/dev/null | tr '\n' ' ' || true)
+            [[ -n "$error_msg" ]] && detail="slipstream error: $error_msg"
+        fi
+        log_error "$detail"
+        RESULTS[slipstream]="fail"
+        DETAILS[slipstream]="$detail"
+        return
+    fi
+
+    log_debug "slipstream-client running (PID $pid), testing connectivity..."
+
+    local test_success=false
+
+    # Test connectivity through the tunnel
+    if curl -sf --socks5 127.0.0.1:10804 --max-time "$TEST_TIMEOUT" "$TEST_URL" >/dev/null 2>&1; then
+        log_debug "Basic connectivity test passed"
+        test_success=true
+    else
+        log_debug "Basic connectivity test failed, trying extended timeout..."
+        if curl -sf --socks5 127.0.0.1:10804 --max-time 30 "$TEST_URL" >/dev/null 2>&1; then
+            log_debug "Extended timeout test passed"
+            test_success=true
+        fi
+    fi
+
+    if [[ "$test_success" == "true" ]]; then
+        local tunnel_ip=""
+        tunnel_ip=$(curl -sf --socks5 127.0.0.1:10804 --max-time 30 https://api.ipify.org 2>/dev/null || true)
+        [[ -z "$tunnel_ip" ]] && tunnel_ip=$(curl -sf --socks5 127.0.0.1:10804 --max-time 30 https://ifconfig.me 2>/dev/null || true)
+
+        if [[ -n "$tunnel_ip" ]]; then
+            log_success "Slipstream tunnel working, exit IP: $tunnel_ip"
+            RESULTS[slipstream]="pass"
+            DETAILS[slipstream]="DNS tunnel to $domain working (exit IP: $tunnel_ip)"
+        else
+            log_success "Slipstream tunnel established to $domain"
+            RESULTS[slipstream]="pass"
+            DETAILS[slipstream]="DNS tunnel to $domain working"
+        fi
+    else
+        detail="Tunnel established but connectivity test failed (DNS tunneling is slow)"
+        if [[ -s "$error_log" ]]; then
+            local error_msg
+            error_msg=$(tail -3 "$error_log" 2>/dev/null | tr '\n' ' ' || true)
+            [[ -n "$error_msg" ]] && detail="$detail - $error_msg"
+        fi
+        log_warn "$detail"
+        RESULTS[slipstream]="warn"
+        DETAILS[slipstream]="$detail"
+    fi
+
+    kill $pid 2>/dev/null || true
+    wait $pid 2>/dev/null || true
+}
+
 # Test TrustTunnel
 # Note: TrustTunnel CLI uses TUN interface (full VPN), not SOCKS proxy
 test_trusttunnel() {
@@ -1285,7 +1412,7 @@ output_json() {
 EOF
 
     local first=true
-    for protocol in reality trojan hysteria2 wireguard amneziawg dnstt trusttunnel; do
+    for protocol in reality trojan hysteria2 wireguard amneziawg dnstt slipstream trusttunnel; do
         if [[ -n "${RESULTS[$protocol]:-}" ]]; then
             [[ "$first" != "true" ]] && echo ","
             first=false
@@ -1316,7 +1443,7 @@ output_human() {
     echo ""
     echo "───────────────────────────────────────────────────────────────"
 
-    for protocol in reality trojan hysteria2 wireguard amneziawg dnstt trusttunnel; do
+    for protocol in reality trojan hysteria2 wireguard amneziawg dnstt slipstream trusttunnel; do
         if [[ -n "${RESULTS[$protocol]:-}" ]]; then
             local status="${RESULTS[$protocol]}"
             local detail="${DETAILS[$protocol]:-}"
@@ -1356,6 +1483,7 @@ main() {
     test_wireguard
     test_amneziawg
     test_dnstt
+    test_slipstream
     test_trusttunnel
 
     # Output results

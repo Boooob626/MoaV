@@ -114,8 +114,31 @@ services:
       - all
 
   # ===========================================================================
-  # DNSTT: DNS tunnel server (last resort)
+  # DNS TUNNELS (dnstunnel profile): dns-router + dnstt + slipstream
   # ===========================================================================
+
+  # DNS Router: Routes DNS queries to dnstt/slipstream by domain suffix
+  dns-router:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.dns-router
+    container_name: moav-dns-router
+    restart: unless-stopped
+    networks:
+      - moav_net
+    ports:
+      - "${PORT_DNS:-53}:5353/udp"
+    environment:
+      - DNSTT_DOMAIN=${DNSTT_SUBDOMAIN:-t}.${DOMAIN}
+      - SLIPSTREAM_DOMAIN=${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}
+      - ENABLE_DNSTT=${ENABLE_DNSTT:-true}
+      - ENABLE_SLIPSTREAM=${ENABLE_SLIPSTREAM:-false}
+      - TZ=${TZ:-UTC}
+    profiles:
+      - dnstunnel
+      - all
+
+  # dnstt: DNS tunnel server (reliable, moderate speed)
   dnstt:
     build:
       context: .
@@ -124,8 +147,8 @@ services:
     restart: unless-stopped
     networks:
       - moav_net
-    ports:
-      - "${PORT_DNS:-53}:5353/udp"
+    expose:
+      - "5353"
     volumes:
       - ./configs/dnstt:/etc/dnstt:ro
       - moav_state:/state
@@ -135,9 +158,32 @@ services:
       - DNSTT_UPSTREAM=sing-box:1080
       - TZ=${TZ:-UTC}
     # Note: dnstt requires sing-box (proxy profile) to be running
-    # The moav CLI auto-adds proxy profile when dnstt is selected
+    # The moav CLI auto-adds proxy profile when dnstunnel is selected
     profiles:
-      - dnstt
+      - dnstunnel
+      - all
+
+  # Slipstream: QUIC-over-DNS tunnel (1.5-5x faster than dnstt)
+  slipstream:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.slipstream
+      args:
+        SLIPSTREAM_VERSION: ${SLIPSTREAM_VERSION:-2026.02.22.1}
+    container_name: moav-slipstream
+    restart: unless-stopped
+    networks:
+      - moav_net
+    expose:
+      - "5354"
+    volumes:
+      - moav_state:/state
+    environment:
+      - SLIPSTREAM_DOMAIN=${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}
+      - SLIPSTREAM_UPSTREAM=sing-box:1080
+      - TZ=${TZ:-UTC}
+    profiles:
+      - dnstunnel
       - all
 
   # ===========================================================================
@@ -176,7 +222,7 @@ services:
     profiles:
       - proxy
       - wireguard
-      - dnstt
+      - dnstunnel
       - trusttunnel
       - all
 
@@ -202,6 +248,9 @@ services:
       - "80"
     profiles:
       - proxy
+      - wireguard
+      - dnstunnel
+      - trusttunnel
       - all
 
   # ===========================================================================
@@ -607,6 +656,8 @@ services:
       - ENABLE_HYSTERIA2=${ENABLE_HYSTERIA2:-true}
       - ENABLE_WIREGUARD=${ENABLE_WIREGUARD:-true}
       - ENABLE_DNSTT=${ENABLE_DNSTT:-true}
+      - ENABLE_SLIPSTREAM=${ENABLE_SLIPSTREAM:-false}
+      - SLIPSTREAM_SUBDOMAIN=${SLIPSTREAM_SUBDOMAIN:-s}
       - ENABLE_TRUSTTUNNEL=${ENABLE_TRUSTTUNNEL:-true}
       - ENABLE_AMNEZIAWG=${ENABLE_AMNEZIAWG:-true}
       - PORT_AMNEZIAWG=${PORT_AMNEZIAWG:-51821}
@@ -630,6 +681,7 @@ services:
         SNOWFLAKE_VERSION: ${SNOWFLAKE_VERSION:-2.11.0}
         TRUSTTUNNEL_CLIENT_VERSION: ${TRUSTTUNNEL_CLIENT_VERSION:-0.99.105}
         AWGTOOLS_VERSION: ${AWGTOOLS_VERSION:-1.0.20260223}
+        SLIPSTREAM_VERSION: ${SLIPSTREAM_VERSION:-2026.02.22.1}
     container_name: moav-client
     volumes:
       - ./outputs/bundles:/bundles:ro

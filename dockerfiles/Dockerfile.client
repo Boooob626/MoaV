@@ -2,7 +2,7 @@
 # MoaV Client - Multi-protocol client for testing and connecting
 # =============================================================================
 # Supports: Reality, Trojan, Hysteria2, WireGuard (via wstunnel),
-#           AmneziaWG, dnstt, TrustTunnel, Tor/Snowflake
+#           AmneziaWG, dnstt, Slipstream, TrustTunnel, Tor/Snowflake
 #
 # Strategy: Download pre-built binaries with proper architecture detection
 # =============================================================================
@@ -25,6 +25,41 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     cd /tmp/dnstt/dnstt-client && \
     GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 go build -o /dnstt-client . || touch /dnstt-client
+
+# =============================================================================
+# Builder stage - download slipstream-client (Rust, glibc-linked)
+# Must run on Debian since the binary requires full glibc (__res_init, _Unwind_*)
+# =============================================================================
+FROM debian:bookworm-slim AS slipstream-builder
+
+ARG TARGETARCH
+ARG SLIPSTREAM_VERSION=2026.02.22.1
+
+RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN ARCH="${TARGETARCH:-amd64}" && \
+    wget -qO /usr/local/bin/slipstream-client \
+    "https://github.com/net2share/slipstream-rust-build/releases/download/v${SLIPSTREAM_VERSION}/slipstream-client-linux-${ARCH}" && \
+    chmod +x /usr/local/bin/slipstream-client
+
+# Bundle the glibc shared libs the binary needs so it runs on Alpine
+RUN mkdir -p /slipstream-libs && \
+    ldd /usr/local/bin/slipstream-client | grep -oP '/\S+' | \
+    while read lib; do cp "$lib" /slipstream-libs/; done && \
+    cp /lib64/ld-linux-x86-64.so.2 /slipstream-libs/ 2>/dev/null || \
+    cp /lib/ld-linux-aarch64.so.1 /slipstream-libs/ 2>/dev/null || true
+
+# Create a wrapper script that uses the bundled linker
+RUN ARCH="${TARGETARCH:-amd64}" && \
+    if [ "$ARCH" = "arm64" ]; then \
+        LINKER="/slipstream-libs/ld-linux-aarch64.so.1"; \
+    else \
+        LINKER="/slipstream-libs/ld-linux-x86-64.so.2"; \
+    fi && \
+    echo '#!/bin/sh' > /slipstream-wrapper.sh && \
+    echo "exec $LINKER --library-path /slipstream-libs /usr/local/bin/slipstream-client-bin \"\$@\"" >> /slipstream-wrapper.sh && \
+    chmod +x /slipstream-wrapper.sh
 
 # =============================================================================
 # Final image - download pre-built binaries for correct architecture
@@ -107,6 +142,14 @@ COPY --from=dnstt-builder /dnstt-client /usr/local/bin/dnstt-client
 RUN chmod +x /usr/local/bin/dnstt-client 2>/dev/null && \
     echo "dnstt-client installed" || \
     echo "dnstt-client: not available (optional)"
+
+# slipstream-client: copy from Debian builder (Rust binary needs full glibc)
+# Binary + bundled glibc libs + wrapper script that invokes via the bundled ld-linux
+COPY --from=slipstream-builder /usr/local/bin/slipstream-client /usr/local/bin/slipstream-client-bin
+COPY --from=slipstream-builder /slipstream-libs/ /slipstream-libs/
+COPY --from=slipstream-builder /slipstream-wrapper.sh /usr/local/bin/slipstream-client
+RUN chmod +x /usr/local/bin/slipstream-client /usr/local/bin/slipstream-client-bin && \
+    echo "slipstream-client installed (bundled glibc)"
 
 # trusttunnel-client: download CLI client from TrustTunnelClient repo
 # TrustTunnelClient uses: linux-x86_64, linux-aarch64

@@ -1,0 +1,449 @@
+// DNS Router for MoaV - Routes DNS queries to dnstt or Slipstream backends
+// based on domain suffix matching. Lightweight UDP forwarder with connection pooling.
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+)
+
+const (
+	maxPacketSize  = 4096
+	defaultTimeout = 5 * time.Second
+	dnsHeaderSize  = 12
+)
+
+// Route maps a domain suffix to a backend address.
+type Route struct {
+	Domain  string
+	Backend string
+}
+
+// Router is a DNS packet forwarder with domain-based routing.
+type Router struct {
+	listenAddr string
+	routes     []Route
+	conn       *net.UDPConn
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	backends   map[string]*backendConn
+	backendsMu sync.RWMutex
+	timeout    time.Duration
+}
+
+type backendConn struct {
+	addr    *net.UDPAddr
+	conn    *net.UDPConn
+	mu      sync.Mutex
+	pending map[uint16]chan []byte
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	timeout time.Duration
+}
+
+func main() {
+	routes, err := buildRoutes()
+	if err != nil {
+		log.Fatalf("[dns-router] %v", err)
+	}
+
+	if len(routes) == 0 {
+		log.Fatal("[dns-router] No routes configured. Set ENABLE_DNSTT=true and/or ENABLE_SLIPSTREAM=true")
+	}
+
+	listenAddr := envOr("DNS_LISTEN", ":5353")
+	router := newRouter(listenAddr, routes)
+
+	if err := router.start(); err != nil {
+		log.Fatalf("[dns-router] Failed to start: %v", err)
+	}
+
+	// Wait for shutdown signal
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	log.Println("[dns-router] Shutting down...")
+	router.stop()
+}
+
+func buildRoutes() ([]Route, error) {
+	var routes []Route
+
+	enableDnstt := strings.ToLower(envOr("ENABLE_DNSTT", "true"))
+	enableSlipstream := strings.ToLower(envOr("ENABLE_SLIPSTREAM", "false"))
+
+	if enableDnstt == "true" {
+		domain := os.Getenv("DNSTT_DOMAIN")
+		if domain == "" {
+			return nil, fmt.Errorf("DNSTT_DOMAIN required when ENABLE_DNSTT=true")
+		}
+		backend := envOr("DNSTT_BACKEND", "dnstt:5353")
+		routes = append(routes, Route{Domain: strings.ToLower(domain), Backend: backend})
+		log.Printf("[dns-router] Route: *.%s -> %s (dnstt)", domain, backend)
+	}
+
+	if enableSlipstream == "true" {
+		domain := os.Getenv("SLIPSTREAM_DOMAIN")
+		if domain == "" {
+			return nil, fmt.Errorf("SLIPSTREAM_DOMAIN required when ENABLE_SLIPSTREAM=true")
+		}
+		backend := envOr("SLIPSTREAM_BACKEND", "slipstream:5354")
+		routes = append(routes, Route{Domain: strings.ToLower(domain), Backend: backend})
+		log.Printf("[dns-router] Route: *.%s -> %s (slipstream)", domain, backend)
+	}
+
+	return routes, nil
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// --- Router ---
+
+func newRouter(listenAddr string, routes []Route) *Router {
+	return &Router{
+		listenAddr: listenAddr,
+		routes:     routes,
+		timeout:    defaultTimeout,
+		backends:   make(map[string]*backendConn),
+	}
+}
+
+func (r *Router) start() error {
+	addr, err := net.ResolveUDPAddr("udp", r.listenAddr)
+	if err != nil {
+		return fmt.Errorf("resolve address: %w", err)
+	}
+
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+
+	r.conn = conn
+	r.ctx, r.cancel = context.WithCancel(context.Background())
+
+	r.wg.Add(1)
+	go r.serve()
+
+	log.Printf("[dns-router] Listening on %s (%d routes)", r.listenAddr, len(r.routes))
+	return nil
+}
+
+func (r *Router) stop() {
+	if r.cancel != nil {
+		r.cancel()
+	}
+	if r.conn != nil {
+		r.conn.Close()
+	}
+	r.backendsMu.Lock()
+	for _, bc := range r.backends {
+		bc.close()
+	}
+	r.backendsMu.Unlock()
+	r.wg.Wait()
+}
+
+func (r *Router) serve() {
+	defer r.wg.Done()
+	buf := make([]byte, maxPacketSize)
+
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		default:
+		}
+
+		r.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		n, clientAddr, err := r.conn.ReadFromUDP(buf)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				continue
+			}
+			if r.ctx.Err() != nil {
+				return
+			}
+			log.Printf("[dns-router] Read error: %v", err)
+			continue
+		}
+
+		// Copy packet for goroutine
+		packet := make([]byte, n)
+		copy(packet, buf[:n])
+		go r.handleQuery(packet, clientAddr)
+	}
+}
+
+func (r *Router) handleQuery(packet []byte, clientAddr *net.UDPAddr) {
+	queryName, err := extractQueryName(packet)
+	if err != nil {
+		return
+	}
+
+	backend := r.findBackend(queryName)
+	if backend == "" {
+		return
+	}
+
+	response, err := r.forward(packet, backend)
+	if err != nil {
+		log.Printf("[dns-router] Forward error %s -> %s: %v", queryName, backend, err)
+		return
+	}
+
+	r.conn.WriteToUDP(response, clientAddr)
+}
+
+func (r *Router) findBackend(queryName string) string {
+	for _, route := range r.routes {
+		if matchDomainSuffix(queryName, route.Domain) {
+			return route.Backend
+		}
+	}
+	return ""
+}
+
+// --- Backend connection pool ---
+
+func (r *Router) getBackend(addr string) (*backendConn, error) {
+	r.backendsMu.RLock()
+	bc, ok := r.backends[addr]
+	r.backendsMu.RUnlock()
+	if ok {
+		return bc, nil
+	}
+
+	r.backendsMu.Lock()
+	defer r.backendsMu.Unlock()
+
+	if bc, ok = r.backends[addr]; ok {
+		return bc, nil
+	}
+
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := net.DialUDP("udp", nil, udpAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithCancel(r.ctx)
+	bc = &backendConn{
+		addr:    udpAddr,
+		conn:    conn,
+		pending: make(map[uint16]chan []byte),
+		ctx:     ctx,
+		cancel:  cancel,
+		timeout: r.timeout,
+	}
+	bc.wg.Add(1)
+	go bc.readLoop()
+
+	r.backends[addr] = bc
+	log.Printf("[dns-router] Connected to backend %s", addr)
+	return bc, nil
+}
+
+func (r *Router) forward(packet []byte, backend string) ([]byte, error) {
+	bc, err := r.getBackend(backend)
+	if err != nil {
+		return nil, err
+	}
+	return bc.query(packet)
+}
+
+func (bc *backendConn) query(packet []byte) ([]byte, error) {
+	if len(packet) < 2 {
+		return nil, fmt.Errorf("packet too short")
+	}
+
+	txid := uint16(packet[0])<<8 | uint16(packet[1])
+	ch := make(chan []byte, 1)
+
+	bc.mu.Lock()
+	if _, exists := bc.pending[txid]; exists {
+		bc.mu.Unlock()
+		return bc.queryDirect(packet)
+	}
+	bc.pending[txid] = ch
+	bc.mu.Unlock()
+
+	defer func() {
+		bc.mu.Lock()
+		delete(bc.pending, txid)
+		bc.mu.Unlock()
+	}()
+
+	if _, err := bc.conn.Write(packet); err != nil {
+		return nil, err
+	}
+
+	select {
+	case resp := <-ch:
+		return resp, nil
+	case <-time.After(bc.timeout):
+		return nil, fmt.Errorf("timeout")
+	case <-bc.ctx.Done():
+		return nil, fmt.Errorf("closed")
+	}
+}
+
+// queryDirect is a fallback for txid collisions.
+func (bc *backendConn) queryDirect(packet []byte) ([]byte, error) {
+	conn, err := net.DialUDP("udp", nil, bc.addr)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(bc.timeout))
+
+	if _, err := conn.Write(packet); err != nil {
+		return nil, err
+	}
+	buf := make([]byte, maxPacketSize)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf[:n], nil
+}
+
+func (bc *backendConn) readLoop() {
+	defer bc.wg.Done()
+	buf := make([]byte, maxPacketSize)
+
+	for {
+		select {
+		case <-bc.ctx.Done():
+			return
+		default:
+		}
+
+		bc.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		n, err := bc.conn.Read(buf)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				continue
+			}
+			if bc.ctx.Err() != nil {
+				return
+			}
+			continue
+		}
+		if n < 2 {
+			continue
+		}
+
+		txid := uint16(buf[0])<<8 | uint16(buf[1])
+		bc.mu.Lock()
+		ch, ok := bc.pending[txid]
+		if ok {
+			delete(bc.pending, txid)
+		}
+		bc.mu.Unlock()
+
+		if ok {
+			resp := make([]byte, n)
+			copy(resp, buf[:n])
+			select {
+			case ch <- resp:
+			default:
+			}
+		}
+	}
+}
+
+func (bc *backendConn) close() {
+	bc.cancel()
+	bc.conn.Close()
+	bc.wg.Wait()
+}
+
+// --- DNS packet parsing ---
+
+func extractQueryName(packet []byte) (string, error) {
+	if len(packet) < dnsHeaderSize+1 {
+		return "", fmt.Errorf("packet too short")
+	}
+	// QDCOUNT at bytes 4-5
+	if int(packet[4])<<8|int(packet[5]) == 0 {
+		return "", fmt.Errorf("no questions")
+	}
+
+	var labels []string
+	offset := dnsHeaderSize
+	visited := make(map[int]bool)
+	jumped := false
+	endOffset := offset
+
+	for {
+		if offset >= len(packet) {
+			return "", fmt.Errorf("truncated")
+		}
+		if visited[offset] {
+			return "", fmt.Errorf("pointer loop")
+		}
+		visited[offset] = true
+
+		length := int(packet[offset])
+		if length == 0 {
+			if !jumped {
+				endOffset = offset + 1
+			}
+			break
+		}
+		// Pointer compression
+		if length&0xC0 == 0xC0 {
+			if offset+1 >= len(packet) {
+				return "", fmt.Errorf("truncated pointer")
+			}
+			ptr := int(packet[offset]&0x3F)<<8 | int(packet[offset+1])
+			if !jumped {
+				endOffset = offset + 2
+			}
+			offset = ptr
+			jumped = true
+			continue
+		}
+		if length > 63 {
+			return "", fmt.Errorf("label too long")
+		}
+		offset++
+		if offset+length > len(packet) {
+			return "", fmt.Errorf("truncated label")
+		}
+		labels = append(labels, string(packet[offset:offset+length]))
+		offset += length
+	}
+	_ = endOffset
+
+	return strings.ToLower(strings.Join(labels, ".")), nil
+}
+
+func matchDomainSuffix(queryName, suffix string) bool {
+	queryName = strings.ToLower(queryName)
+	suffix = strings.ToLower(suffix)
+	if queryName == suffix {
+		return true
+	}
+	return strings.HasSuffix(queryName, "."+suffix)
+}

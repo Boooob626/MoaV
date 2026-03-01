@@ -24,7 +24,7 @@ TEST_TIMEOUT="${TEST_TIMEOUT:-10}"
 
 # Protocol priority for auto mode
 # Note: psiphon excluded - requires embedded server list, not supported in client mode
-PROTOCOL_PRIORITY=(reality hysteria2 trojan trusttunnel wireguard amneziawg tor dnstt)
+PROTOCOL_PRIORITY=(reality hysteria2 trojan trusttunnel wireguard amneziawg tor dnstt slipstream)
 
 # State
 CURRENT_PID=""
@@ -597,6 +597,71 @@ connect_dnstt() {
     fi
 }
 
+# Connect using Slipstream (QUIC-over-DNS tunnel)
+connect_slipstream() {
+    local instructions_file=""
+
+    for f in "$CONFIG_DIR"/slipstream*.txt "$CONFIG_DIR"/*slipstream*; do
+        [[ -f "$f" ]] && instructions_file="$f" && break
+    done
+
+    if [[ -z "$instructions_file" ]]; then
+        log_error "No Slipstream config found"
+        return 1
+    fi
+
+    if ! command -v slipstream-client >/dev/null 2>&1; then
+        log_error "slipstream-client not available"
+        return 1
+    fi
+
+    # Extract domain from instructions (e.g., s.example.com)
+    local domain=$(grep -oE 's\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$instructions_file" | head -1)
+
+    if [[ -z "$domain" ]]; then
+        log_error "Could not extract Slipstream domain from instructions"
+        return 1
+    fi
+
+    # Find cert file
+    local cert_file=""
+    for f in "$CONFIG_DIR"/slipstream-cert.pem "/slipstream/cert.pem"; do
+        [[ -f "$f" ]] && cert_file="$f" && break
+    done
+
+    if [[ -z "$cert_file" ]]; then
+        log_error "Slipstream certificate not found"
+        return 1
+    fi
+
+    log_info "Starting Slipstream client for $domain..."
+    log_info "Note: DNS tunneling may be slow - using resolver mode (stealthier)"
+
+    # slipstream-client is a TCP tunnel: local TCP port → DNS tunnel → server's sing-box:1080 (SOCKS5)
+    slipstream-client --domain "$domain" --cert "$cert_file" --resolver 1.1.1.1:53 --tcp-listen-host 127.0.0.1 --tcp-listen-port $SOCKS_PORT &
+    CURRENT_PID=$!
+    CURRENT_PROTOCOL="slipstream"
+
+    # DNS tunneling takes a moment to establish
+    sleep 5
+
+    if ! kill -0 $CURRENT_PID 2>/dev/null; then
+        log_error "slipstream-client failed to start"
+        return 1
+    fi
+
+    # Test connectivity (with longer timeout for DNS tunnel)
+    log_info "Testing tunnel connectivity..."
+    if curl -sf --socks5 127.0.0.1:$SOCKS_PORT --max-time 30 "$TEST_URL" >/dev/null 2>&1; then
+        log_success "Slipstream tunnel established and working"
+        return 0
+    else
+        log_warn "Tunnel established but connectivity test timed out"
+        log_info "DNS tunneling is slow - connection may still work"
+        return 0
+    fi
+}
+
 # Connect using TrustTunnel
 # Note: TrustTunnel is a full VPN (TUN-based), not a proxy
 # It routes all container traffic through the VPN tunnel
@@ -846,6 +911,12 @@ connect_auto() {
                     return 0
                 fi
                 ;;
+            slipstream)
+                if connect_slipstream; then
+                    log_success "Connected via Slipstream"
+                    return 0
+                fi
+                ;;
         esac
 
         log_warn "$protocol failed, trying next..."
@@ -899,6 +970,9 @@ main() {
             ;;
         dnstt)
             connect_dnstt && connected=true
+            ;;
+        slipstream)
+            connect_slipstream && connected=true
             ;;
         *)
             log_error "Unknown protocol: $PROTOCOL"
