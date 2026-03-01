@@ -637,8 +637,8 @@ connect_slipstream() {
     log_info "Starting Slipstream client for $domain..."
     log_info "Note: DNS tunneling may be slow - using resolver mode (stealthier)"
 
-    # slipstream-client creates a local SOCKS5 proxy
-    slipstream-client --domain "$domain" --cert "$cert_file" --dns-server 1.1.1.1:53 --socks-listen 127.0.0.1:$SOCKS_PORT &
+    # slipstream-client is a TCP tunnel: local TCP port → DNS tunnel → server's sing-box:1080 (SOCKS5)
+    slipstream-client --domain "$domain" --cert "$cert_file" --resolver 1.1.1.1:53 --tcp-listen-host 127.0.0.1 --tcp-listen-port $SOCKS_PORT &
     CURRENT_PID=$!
     CURRENT_PROTOCOL="slipstream"
 

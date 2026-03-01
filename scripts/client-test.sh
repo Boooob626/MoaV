@@ -1118,7 +1118,8 @@ test_slipstream() {
     local error_log="$TEMP_DIR/slipstream-error.log"
 
     # Start slipstream-client in resolver mode
-    slipstream-client --domain "$domain" --cert "$cert_file" --dns-server 1.1.1.1:53 --socks-listen 127.0.0.1:10804 2>"$error_log" &
+    # slipstream-client is a TCP tunnel: local TCP port → DNS tunnel → server's sing-box:1080 (SOCKS5)
+    slipstream-client --domain "$domain" --cert "$cert_file" --resolver 1.1.1.1:53 --tcp-listen-host 127.0.0.1 --tcp-listen-port 10804 2>"$error_log" &
     local pid=$!
 
     # Give it time to establish the tunnel
