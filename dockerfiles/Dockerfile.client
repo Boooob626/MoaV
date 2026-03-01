@@ -35,7 +35,7 @@ FROM alpine:3.21
 ARG TARGETARCH
 
 # Versions - read from .env via docker-compose build args, with fallback defaults
-ARG SINGBOX_VERSION=1.12.22
+ARG SINGBOX_VERSION=1.12.23
 ARG WSTUNNEL_VERSION=10.5.2
 ARG SNOWFLAKE_VERSION=2.11.0
 ARG TRUSTTUNNEL_VERSION=0.9.125

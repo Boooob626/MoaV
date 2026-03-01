@@ -14,6 +14,7 @@ volumes:
   moav_prometheus:
   moav_grafana:
   moav_snowflake_logs:
+  moav_webroot:
 
 services:
   # ===========================================================================
@@ -25,7 +26,7 @@ services:
       context: .
       dockerfile: dockerfiles/Dockerfile.sing-box
       args:
-        SINGBOX_VERSION: ${SINGBOX_VERSION:-1.12.22}
+        SINGBOX_VERSION: ${SINGBOX_VERSION:-1.12.23}
     container_name: moav-sing-box
     restart: unless-stopped
     networks:
@@ -145,11 +146,11 @@ services:
   certbot:
     image: ${IMAGE_CERTBOT:-certbot/certbot:latest}
     container_name: moav-certbot
-    ports:
-      - "80:80"
+    depends_on:
+      - decoy
     volumes:
       - moav_certs:/etc/letsencrypt
-      - ./web:/var/www/html:ro
+      - moav_webroot:/acme
     environment:
       - DOMAIN=${DOMAIN}
       - ACME_EMAIL=${ACME_EMAIL}
@@ -161,7 +162,8 @@ services:
           exit 0
         fi
         if [ ! -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
-          certbot certonly --standalone \
+          certbot certonly --webroot \
+            --webroot-path /acme \
             --non-interactive \
             --agree-tos \
             --email ${ACME_EMAIL} \
@@ -187,8 +189,15 @@ services:
     restart: unless-stopped
     networks:
       - moav_net
+    tmpfs:
+      - /usr/share/nginx/html
     volumes:
-      - ./web:/usr/share/nginx/html:ro
+      - ./web:/template:ro
+      - moav_webroot:/acme
+      - ./configs/decoy/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./configs/decoy/40-randomize.sh:/docker-entrypoint.d/40-randomize.sh:ro
+    ports:
+      - "80:80"
     expose:
       - "80"
     profiles:
@@ -616,7 +625,7 @@ services:
       context: .
       dockerfile: dockerfiles/Dockerfile.client
       args:
-        SINGBOX_VERSION: ${SINGBOX_VERSION:-1.12.22}
+        SINGBOX_VERSION: ${SINGBOX_VERSION:-1.12.23}
         WSTUNNEL_VERSION: ${WSTUNNEL_VERSION:-10.5.2}
         SNOWFLAKE_VERSION: ${SNOWFLAKE_VERSION:-2.11.0}
         TRUSTTUNNEL_CLIENT_VERSION: ${TRUSTTUNNEL_CLIENT_VERSION:-0.99.105}
