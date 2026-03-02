@@ -482,7 +482,7 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
     CONFIG_REALITY=$(cat "$OUTPUT_DIR/reality.txt" 2>/dev/null | tr -d '\n' || echo "")
     CONFIG_HYSTERIA2=$(cat "$OUTPUT_DIR/hysteria2.txt" 2>/dev/null | tr -d '\n' || echo "")
     CONFIG_TROJAN=$(cat "$OUTPUT_DIR/trojan.txt" 2>/dev/null | tr -d '\n' || echo "")
-    CONFIG_CDN=$(cat "$OUTPUT_DIR/cdn-vless-ws.txt" 2>/dev/null | tr -d '\n' || echo "")
+    CONFIG_CDN=$(cat "$OUTPUT_DIR/cdn-vless.txt" 2>/dev/null | tr -d '\n' || echo "")
     CONFIG_WIREGUARD=$(cat "$OUTPUT_DIR/wireguard.conf" 2>/dev/null || echo "")
     CONFIG_WIREGUARD_WSTUNNEL=$(cat "$OUTPUT_DIR/wireguard-wstunnel.conf" 2>/dev/null || echo "")
     CONFIG_AMNEZIAWG=$(cat "$OUTPUT_DIR/amneziawg.conf" 2>/dev/null || echo "")
@@ -607,7 +607,7 @@ with open(filepath, 'w') as f:
         replace_placeholder "{{CONFIG_CDN}}" "$CONFIG_CDN"
         replace_placeholder "{{CDN_DOMAIN}}" "$CDN_DOMAIN"
         # CDN QR code
-        QR_CDN_B64=$(qr_to_base64 "$OUTPUT_DIR/cdn-vless-ws-qr.png")
+        QR_CDN_B64=$(qr_to_base64 "$OUTPUT_DIR/cdn-vless-qr.png")
         sed -i.bak "s|{{QR_CDN}}|$QR_CDN_B64|g" "$OUTPUT_HTML"
     else
         replace_placeholder "{{CONFIG_CDN}}" "CDN not configured"

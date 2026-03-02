@@ -703,6 +703,7 @@ services:
       - CDN_SUBDOMAIN=${CDN_SUBDOMAIN:-}
       - CDN_DOMAIN=${CDN_DOMAIN:-}
       - CDN_WS_PATH=${CDN_WS_PATH:-/ws}
+      - CDN_TRANSPORT=${CDN_TRANSPORT:-httpupgrade}
     profiles:
       - setup
 

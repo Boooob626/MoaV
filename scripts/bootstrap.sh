@@ -253,7 +253,31 @@ if [[ -z "${CDN_DOMAIN:-}" && -n "${CDN_SUBDOMAIN:-}" && -n "${DOMAIN:-}" ]]; th
 else
     export CDN_DOMAIN="${CDN_DOMAIN:-}"
 fi
-export CDN_WS_PATH="${CDN_WS_PATH:-/ws}"
+
+# Generate or load CDN WS path (realistic-looking to evade DPI)
+if [[ -f "$STATE_DIR/keys/cdn.env" ]]; then
+    source "$STATE_DIR/keys/cdn.env"
+fi
+if [[ -z "${CDN_WS_PATH:-}" || "${CDN_WS_PATH}" == "/ws" ]]; then
+    # Generate a random realistic-looking path that blends with normal web traffic
+    _cdn_prefixes=("api/v3/storage" "api/v2/assets" "api/v4/cdn" "api/v1/files" "cdn/v2/objects" "static/v3/resources" "dl/v2/packages")
+    _cdn_mids=("download" "fetch" "get" "retrieve" "sync" "export" "backup")
+    _cdn_files=("update-bundle" "resource-pack" "data-snapshot" "system-archive" "content-index" "cache-manifest" "config-bundle")
+    _cdn_exts=("bin" "dat" "pkg" "gz" "zip" "enc")
+    _rand_prefix=${_cdn_prefixes[$((RANDOM % ${#_cdn_prefixes[@]}))]}
+    _rand_mid=${_cdn_mids[$((RANDOM % ${#_cdn_mids[@]}))]}
+    _rand_file=${_cdn_files[$((RANDOM % ${#_cdn_files[@]}))]}
+    _rand_ext=${_cdn_exts[$((RANDOM % ${#_cdn_exts[@]}))]}
+    _rand_num=$((RANDOM % 90 + 10))
+    CDN_WS_PATH="/${_rand_prefix}/${_rand_mid}/${_rand_file}-${_rand_num}.${_rand_ext}"
+    log_info "Generated CDN WS path: $CDN_WS_PATH"
+
+    # Persist for subsequent bootstraps
+    mkdir -p "$STATE_DIR/keys"
+    echo "CDN_WS_PATH=$CDN_WS_PATH" > "$STATE_DIR/keys/cdn.env"
+fi
+export CDN_WS_PATH
+export CDN_TRANSPORT="${CDN_TRANSPORT:-httpupgrade}"
 
 # -----------------------------------------------------------------------------
 # Generate WireGuard server config (before creating users)
@@ -590,7 +614,8 @@ if [[ "$singbox_needed" == "true" ]]; then
     export REALITY_SERVER_NAME="$REALITY_TARGET_HOST"
     export CLASH_API_SECRET
     export HYSTERIA2_OBFS_PASSWORD
-    export CDN_WS_PATH="${CDN_WS_PATH:-/ws}"
+    export CDN_WS_PATH
+    export CDN_TRANSPORT
     export LOG_LEVEL="${LOG_LEVEL:-info}"
 
     envsubst < /configs/sing-box/config.json.template > /configs/sing-box/config.json
