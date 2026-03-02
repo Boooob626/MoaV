@@ -269,6 +269,8 @@ services:
       - moav_net
     ports:
       - "${PORT_TELEMT:-993}:993/tcp"
+    expose:
+      - "9090"
     volumes:
       - ./configs/telemt:/etc/telemt:ro
     tmpfs:
