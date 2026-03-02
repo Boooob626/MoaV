@@ -496,6 +496,10 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
             CDN_DOMAIN="${_cdn_sub}.${_cdn_dom}"
         fi
     fi
+    # CDN split SNI/Address for anti-DPI stealth
+    CDN_SNI="${CDN_SNI:-${DOMAIN:-}}"
+    CDN_ADDRESS="${CDN_ADDRESS:-${CDN_DOMAIN}}"
+    export CDN_SNI CDN_ADDRESS
 
     # Read user password from trusttunnel.json or credentials
     if [[ -f "$OUTPUT_DIR/trusttunnel.json" ]]; then

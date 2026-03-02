@@ -4648,6 +4648,10 @@ cmd_regenerate_users() {
     cdn_ws_path="${cdn_ws_path:-/ws}"
     local cdn_transport=$(grep -E '^CDN_TRANSPORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
     cdn_transport="${cdn_transport:-httpupgrade}"
+    local cdn_sni=$(grep -E '^CDN_SNI=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    cdn_sni="${cdn_sni:-${domain}}"
+    local cdn_address=$(grep -E '^CDN_ADDRESS=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    cdn_address="${cdn_address:-${cdn_domain}}"
 
     # Load ENABLE_* settings from .env
     local enable_reality=$(grep -E '^ENABLE_REALITY=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
@@ -4678,6 +4682,8 @@ cmd_regenerate_users() {
             -e "CDN_DOMAIN=$cdn_domain" \
             -e "CDN_WS_PATH=$cdn_ws_path" \
             -e "CDN_TRANSPORT=$cdn_transport" \
+            -e "CDN_SNI=$cdn_sni" \
+            -e "CDN_ADDRESS=$cdn_address" \
             -e "ENABLE_REALITY=${enable_reality:-true}" \
             -e "ENABLE_TROJAN=${enable_trojan:-true}" \
             -e "ENABLE_HYSTERIA2=${enable_hysteria2:-true}" \

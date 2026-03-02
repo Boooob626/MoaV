@@ -245,9 +245,13 @@ fi
 CDN_WS_PATH="${CDN_WS_PATH:-/ws}"
 CDN_TRANSPORT="${CDN_TRANSPORT:-$(grep -E '^CDN_TRANSPORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"' || true)}"
 CDN_TRANSPORT="${CDN_TRANSPORT:-httpupgrade}"
+CDN_SNI="${CDN_SNI:-$(grep -E '^CDN_SNI=' .env 2>/dev/null | cut -d= -f2 | tr -d '"' || true)}"
+CDN_SNI="${CDN_SNI:-${DOMAIN_FROM_ENV:-}}"
+CDN_ADDRESS="${CDN_ADDRESS:-$(grep -E '^CDN_ADDRESS=' .env 2>/dev/null | cut -d= -f2 | tr -d '"' || true)}"
+CDN_ADDRESS="${CDN_ADDRESS:-${CDN_DOMAIN}}"
 
 if [[ -n "$CDN_DOMAIN" ]]; then
-    CDN_LINK="vless://${USER_UUID}@${CDN_DOMAIN}:443?security=tls&type=${CDN_TRANSPORT}&path=${CDN_WS_PATH}&sni=${CDN_DOMAIN}&host=${CDN_DOMAIN}&fp=random&alpn=http/1.1#MoaV-CDN-${USERNAME}"
+    CDN_LINK="vless://${USER_UUID}@${CDN_ADDRESS}:443?security=tls&type=${CDN_TRANSPORT}&path=${CDN_WS_PATH}&sni=${CDN_SNI}&host=${CDN_DOMAIN}&fp=random&alpn=http/1.1#MoaV-CDN-${USERNAME}"
     echo "$CDN_LINK" > "$OUTPUT_DIR/cdn-vless.txt"
 
     if command -v qrencode &>/dev/null; then

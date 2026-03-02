@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HTTPUpgrade as default CDN transport** — Less fingerprinted by DPI than WebSocket; configurable via `CDN_TRANSPORT` env var (`httpupgrade` or `ws`)
 - **TLS fingerprint randomization** — All protocols now use `fp=random` (rotates real browser fingerprints: Chrome, Firefox, Safari, Edge) instead of hardcoded `chrome`
 - **Domain naming strategy guide** — New section in DNS docs with good/bad domain name examples and CDN subdomain advice for DPI evasion
+- **CDN split SNI/Address/Host** — Client configs now use root domain as TLS SNI (less suspicious to DPI than `cdn.domain.com`), with CDN subdomain only in the encrypted Host header for Cloudflare routing. Optional `CDN_ADDRESS` for full domain separation (`CDN_SNI`, `CDN_ADDRESS` env vars)
+- **Cloudflare SSL Flexible requirement** — Added clear documentation about SSL mode requirement across DNS, Setup, and Troubleshooting docs (prevents 525 errors)
 
 ### Fixed
 - **`moav update` crashing silently** — `check_component_versions()` failed under `set -euo pipefail` when version variables (e.g., `TELEMT_VERSION`, `SLIPSTREAM_VERSION`) were missing from older `.env` files; grep returning exit code 1 killed the script before reaching `check_env_additions()`

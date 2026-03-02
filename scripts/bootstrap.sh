@@ -278,6 +278,8 @@ if [[ -z "${CDN_WS_PATH:-}" || "${CDN_WS_PATH}" == "/ws" ]]; then
 fi
 export CDN_WS_PATH
 export CDN_TRANSPORT="${CDN_TRANSPORT:-httpupgrade}"
+export CDN_SNI="${CDN_SNI:-${DOMAIN:-}}"
+export CDN_ADDRESS="${CDN_ADDRESS:-${CDN_DOMAIN:-}}"
 
 # -----------------------------------------------------------------------------
 # Generate WireGuard server config (before creating users)
