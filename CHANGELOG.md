@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-03-02
+
+### Added
+- **Auto-detect missing `.env` variables** — `moav update` now compares your `.env` with `.env.example` and offers to auto-add new variables with defaults (timestamped separator for easy review)
+- **CDN WS path auto-generation** — Bootstrap generates a random realistic API-like path (e.g., `/api/v3/storage/download/update-bundle-4821.bin`) instead of the obvious `/ws`, persisted in state for consistency across regenerations
+- **HTTPUpgrade as default CDN transport** — Less fingerprinted by DPI than WebSocket; configurable via `CDN_TRANSPORT` env var (`httpupgrade` or `ws`)
+- **TLS fingerprint randomization** — All protocols now use `fp=random` (rotates real browser fingerprints: Chrome, Firefox, Safari, Edge) instead of hardcoded `chrome`
+- **Domain naming strategy guide** — New section in DNS docs with good/bad domain name examples and CDN subdomain advice for DPI evasion
+
+### Fixed
+- **`moav update` crashing silently** — `check_component_versions()` failed under `set -euo pipefail` when version variables (e.g., `TELEMT_VERSION`, `SLIPSTREAM_VERSION`) were missing from older `.env` files; grep returning exit code 1 killed the script before reaching `check_env_additions()`
+- **`moav logs <service>` showing all containers** — Service names like `slipstream` were resolved as profile aliases (→ `dnstunnel`), causing `--profile dnstunnel` to show all DNS tunnel services; now checks exact profile names first, then falls back to service resolution
+
+### Changed
+- **CDN bundle files renamed** — `cdn-vless-ws-singbox.json` → `cdn-vless-singbox.json`, `cdn-vless-ws.txt` → `cdn-vless.txt` (reflects transport-agnostic naming)
+
 ## [1.4.1] - 2026-03-02
 
 ### Added
@@ -636,7 +652,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uTLS fingerprint spoofing (Chrome)
 - Automatic short ID generation for Reality
 
-[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/shayanb/MoaV/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/shayanb/MoaV/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/shayanb/MoaV/compare/v1.3.8...v1.4.0
 [1.3.8]: https://github.com/shayanb/MoaV/compare/v1.3.7...v1.3.8
