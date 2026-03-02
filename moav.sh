@@ -1150,9 +1150,13 @@ cmd_update() {
             success "Already up to date (branch: $new_branch)"
         else
             success "Updated: $current_commit → $new_commit (branch: $new_branch)"
+
+            # Re-exec with new code for post-update checks
+            # The running script is the old version; the new code is on disk
+            exec "$SCRIPT_DIR/moav.sh" _post-update
         fi
 
-        # Check for component version updates and new .env variables
+        # Post-update checks (reached on "already up to date" or via _post-update re-exec)
         check_component_versions
         check_env_additions
     else
@@ -4771,6 +4775,11 @@ main() {
         update)
             shift
             cmd_update "$@"
+            ;;
+        _post-update)
+            # Internal: re-exec target after self-update pulls new code
+            check_component_versions
+            check_env_additions
             ;;
         check)
             cmd_check
