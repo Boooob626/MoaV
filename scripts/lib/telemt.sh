@@ -202,10 +202,10 @@ telemt_add_user_to_config() {
     sed -i "/^\[access\.user_max_tcp_conns\]/i ${user_id} = \"${secret}\"" "$config_file"
 
     # Add connection limit to [access.user_max_tcp_conns] section
-    sed -i "/^\[access\.user_max_unique_ips\]/i ${user_id} = 100" "$config_file"
+    sed -i "/^\[access\.user_max_unique_ips\]/i ${user_id} = ${TELEMT_MAX_TCP_CONNS:-100}" "$config_file"
 
     # Add IP limit to [access.user_max_unique_ips] section (append at end)
-    echo "${user_id} = 10" >> "$config_file"
+    echo "${user_id} = ${TELEMT_MAX_UNIQUE_IPS:-10}" >> "$config_file"
 
     log_info "Added $user_id to telemt config"
 }

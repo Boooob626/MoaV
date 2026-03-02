@@ -4555,6 +4555,8 @@ cmd_regenerate_users() {
     local enable_trusttunnel=$(grep -E '^ENABLE_TRUSTTUNNEL=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
     local enable_telemt=$(grep -E '^ENABLE_TELEMT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
     local telemt_tls_domain=$(grep -E '^TELEMT_TLS_DOMAIN=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    local telemt_max_tcp_conns=$(grep -E '^TELEMT_MAX_TCP_CONNS=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    local telemt_max_unique_ips=$(grep -E '^TELEMT_MAX_UNIQUE_IPS=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
     local port_telemt=$(grep -E '^PORT_TELEMT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
 
     # Run the regeneration using bootstrap container
@@ -4580,6 +4582,8 @@ cmd_regenerate_users() {
             -e "ENABLE_TRUSTTUNNEL=${enable_trusttunnel:-true}" \
             -e "ENABLE_TELEMT=${enable_telemt:-true}" \
             -e "TELEMT_TLS_DOMAIN=${telemt_tls_domain:-dl.google.com}" \
+            -e "TELEMT_MAX_TCP_CONNS=${telemt_max_tcp_conns:-100}" \
+            -e "TELEMT_MAX_UNIQUE_IPS=${telemt_max_unique_ips:-10}" \
             -e "PORT_TELEMT=${port_telemt:-993}" \
             bootstrap /app/generate-user.sh "$username" >/dev/null 2>&1; then
             echo -e "${GREEN}✓${NC}"

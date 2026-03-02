@@ -245,6 +245,8 @@ export ENABLE_TRUSTTUNNEL="${ENABLE_TRUSTTUNNEL:-true}"
 export ENABLE_TELEMT="${ENABLE_TELEMT:-true}"
 export PORT_TELEMT="${PORT_TELEMT:-993}"
 export TELEMT_TLS_DOMAIN="${TELEMT_TLS_DOMAIN:-dl.google.com}"
+export TELEMT_MAX_TCP_CONNS="${TELEMT_MAX_TCP_CONNS:-100}"
+export TELEMT_MAX_UNIQUE_IPS="${TELEMT_MAX_UNIQUE_IPS:-10}"
 # Construct CDN_DOMAIN from CDN_SUBDOMAIN + DOMAIN if not explicitly set
 if [[ -z "${CDN_DOMAIN:-}" && -n "${CDN_SUBDOMAIN:-}" && -n "${DOMAIN:-}" ]]; then
     export CDN_DOMAIN="${CDN_SUBDOMAIN}.${DOMAIN}"
@@ -413,9 +415,9 @@ password = \"$USER_PASSWORD\"
         telemt_generate_secret "$USER_ID"
         TELEMT_USERS_TOML+="${USER_ID} = \"${TELEMT_SECRET}\"
 "
-        TELEMT_CONNS_TOML+="${USER_ID} = 100
+        TELEMT_CONNS_TOML+="${USER_ID} = ${TELEMT_MAX_TCP_CONNS}
 "
-        TELEMT_IPS_TOML+="${USER_ID} = 10
+        TELEMT_IPS_TOML+="${USER_ID} = ${TELEMT_MAX_UNIQUE_IPS}
 "
     fi
 
@@ -516,9 +518,9 @@ password = \"$USER_PASSWORD\"
         telemt_generate_secret "$EXTRA_USER_ID"
         TELEMT_USERS_TOML+="${EXTRA_USER_ID} = \"${TELEMT_SECRET}\"
 "
-        TELEMT_CONNS_TOML+="${EXTRA_USER_ID} = 100
+        TELEMT_CONNS_TOML+="${EXTRA_USER_ID} = ${TELEMT_MAX_TCP_CONNS}
 "
-        TELEMT_IPS_TOML+="${EXTRA_USER_ID} = 10
+        TELEMT_IPS_TOML+="${EXTRA_USER_ID} = ${TELEMT_MAX_UNIQUE_IPS}
 "
     fi
 
