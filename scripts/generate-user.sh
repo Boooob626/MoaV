@@ -75,7 +75,7 @@ if [[ "${ENABLE_REALITY:-true}" == "true" ]]; then
       "tls": {
         "enabled": true,
         "server_name": "${REALITY_TARGET_HOST}",
-        "utls": {"enabled": true, "fingerprint": "chrome"},
+        "utls": {"enabled": true, "fingerprint": "random"},
         "reality": {
           "enabled": true,
           "public_key": "${REALITY_PUBLIC_KEY}",
@@ -93,7 +93,7 @@ if [[ "${ENABLE_REALITY:-true}" == "true" ]]; then
 EOF
 
     # Generate v2rayN/NekoBox compatible link (IPv4)
-    REALITY_LINK="vless://${USER_UUID}@${SERVER_IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET_HOST}&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#MoaV-Reality-${USER_ID}"
+    REALITY_LINK="vless://${USER_UUID}@${SERVER_IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET_HOST}&fp=random&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#MoaV-Reality-${USER_ID}"
     echo "$REALITY_LINK" > "$OUTPUT_DIR/reality.txt"
 
     # Generate QR code
@@ -101,7 +101,7 @@ EOF
 
     # Generate IPv6 link if available
     if [[ -n "${SERVER_IPV6:-}" ]]; then
-        REALITY_LINK_V6="vless://${USER_UUID}@[${SERVER_IPV6}]:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET_HOST}&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#MoaV-Reality-${USER_ID}-IPv6"
+        REALITY_LINK_V6="vless://${USER_UUID}@[${SERVER_IPV6}]:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET_HOST}&fp=random&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#MoaV-Reality-${USER_ID}-IPv6"
         echo "$REALITY_LINK_V6" > "$OUTPUT_DIR/reality-ipv6.txt"
         qrencode -o "$OUTPUT_DIR/reality-ipv6-qr.png" -s 6 "$REALITY_LINK_V6" 2>/dev/null || true
     fi
@@ -129,7 +129,7 @@ if [[ "${ENABLE_TROJAN:-true}" == "true" ]]; then
       "tls": {
         "enabled": true,
         "server_name": "${DOMAIN}",
-        "utls": {"enabled": true, "fingerprint": "chrome"},
+        "utls": {"enabled": true, "fingerprint": "random"},
         "record_fragment": true
       },
       "multiplex": {
@@ -242,8 +242,9 @@ fi
 
 if [[ -n "${CDN_DOMAIN:-}" ]]; then
     CDN_WS_PATH="${CDN_WS_PATH:-/ws}"
+    CDN_TRANSPORT="${CDN_TRANSPORT:-httpupgrade}"
 
-    cat > "$OUTPUT_DIR/cdn-vless-ws-singbox.json" <<EOF
+    cat > "$OUTPUT_DIR/cdn-vless-singbox.json" <<EOF
 {
   "log": {"level": "info"},
   "inbounds": [
@@ -259,11 +260,11 @@ if [[ -n "${CDN_DOMAIN:-}" ]]; then
       "tls": {
         "enabled": true,
         "server_name": "${CDN_DOMAIN}",
-        "utls": {"enabled": true, "fingerprint": "chrome"},
+        "utls": {"enabled": true, "fingerprint": "random"},
         "alpn": ["http/1.1"]
       },
       "transport": {
-        "type": "ws",
+        "type": "${CDN_TRANSPORT}",
         "path": "${CDN_WS_PATH}",
         "headers": {"Host": "${CDN_DOMAIN}"}
       },
@@ -282,11 +283,11 @@ if [[ -n "${CDN_DOMAIN:-}" ]]; then
 }
 EOF
 
-    CDN_LINK="vless://${USER_UUID}@${CDN_DOMAIN}:443?security=tls&type=ws&path=${CDN_WS_PATH}&sni=${CDN_DOMAIN}&host=${CDN_DOMAIN}&fp=chrome&alpn=http/1.1#MoaV-CDN-${USER_ID}"
-    echo "$CDN_LINK" > "$OUTPUT_DIR/cdn-vless-ws.txt"
-    qrencode -o "$OUTPUT_DIR/cdn-vless-ws-qr.png" -s 6 "$CDN_LINK" 2>/dev/null || true
+    CDN_LINK="vless://${USER_UUID}@${CDN_DOMAIN}:443?security=tls&type=${CDN_TRANSPORT}&path=${CDN_WS_PATH}&sni=${CDN_DOMAIN}&host=${CDN_DOMAIN}&fp=random&alpn=http/1.1#MoaV-CDN-${USER_ID}"
+    echo "$CDN_LINK" > "$OUTPUT_DIR/cdn-vless.txt"
+    qrencode -o "$OUTPUT_DIR/cdn-vless-qr.png" -s 6 "$CDN_LINK" 2>/dev/null || true
 
-    log_info "  - CDN VLESS+WS config generated (domain: $CDN_DOMAIN)"
+    log_info "  - CDN VLESS config generated (transport: $CDN_TRANSPORT, domain: $CDN_DOMAIN)"
 fi
 
 # -----------------------------------------------------------------------------
@@ -440,7 +441,7 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
     CONFIG_REALITY=$(cat "$OUTPUT_DIR/reality.txt" 2>/dev/null | tr -d '\n' || echo "")
     CONFIG_HYSTERIA2=$(cat "$OUTPUT_DIR/hysteria2.txt" 2>/dev/null | tr -d '\n' || echo "")
     CONFIG_TROJAN=$(cat "$OUTPUT_DIR/trojan.txt" 2>/dev/null | tr -d '\n' || echo "")
-    CONFIG_CDN=$(cat "$OUTPUT_DIR/cdn-vless-ws.txt" 2>/dev/null | tr -d '\n' || echo "")
+    CONFIG_CDN=$(cat "$OUTPUT_DIR/cdn-vless.txt" 2>/dev/null | tr -d '\n' || echo "")
     CONFIG_WIREGUARD=$(cat "$OUTPUT_DIR/wireguard.conf" 2>/dev/null || echo "")
     CONFIG_WIREGUARD_WSTUNNEL=$(cat "$OUTPUT_DIR/wireguard-wstunnel.conf" 2>/dev/null || echo "")
     CONFIG_AMNEZIAWG=$(cat "$OUTPUT_DIR/amneziawg.conf" 2>/dev/null || echo "")
@@ -469,7 +470,7 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
     QR_REALITY_B64=$(qr_to_base64 "$OUTPUT_DIR/reality-qr.png")
     QR_HYSTERIA2_B64=$(qr_to_base64 "$OUTPUT_DIR/hysteria2-qr.png")
     QR_TROJAN_B64=$(qr_to_base64 "$OUTPUT_DIR/trojan-qr.png")
-    QR_CDN_B64=$(qr_to_base64 "$OUTPUT_DIR/cdn-vless-ws-qr.png")
+    QR_CDN_B64=$(qr_to_base64 "$OUTPUT_DIR/cdn-vless-qr.png")
     QR_WIREGUARD_B64=$(qr_to_base64 "$OUTPUT_DIR/wireguard-qr.png")
     QR_WIREGUARD_WSTUNNEL_B64=$(qr_to_base64 "$OUTPUT_DIR/wireguard-wstunnel-qr.png")
     QR_AMNEZIAWG_B64=$(qr_to_base64 "$OUTPUT_DIR/amneziawg-qr.png")

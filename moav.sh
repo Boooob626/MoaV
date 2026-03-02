@@ -3451,18 +3451,15 @@ cmd_logs() {
                 shift
                 ;;
             *)
-                # Check if argument is a profile name (or alias)
-                local resolved_profile
-                resolved_profile=$(resolve_profile "$1")
+                # Check if it's an exact profile name first
                 local valid_profiles="proxy wireguard amneziawg dnstunnel trusttunnel telegram admin conduit snowflake monitoring client all setup"
-                if echo "$valid_profiles" | grep -qw "$resolved_profile"; then
-                    profile_flags="$profile_flags --profile $resolved_profile"
+                if echo "$valid_profiles" | grep -qw "$1"; then
+                    profile_flags="$profile_flags --profile $1"
                 else
-                    if [[ -z "$services_to_log" ]]; then
-                        services_to_log=$(resolve_services "$1")
-                    else
-                        services_to_log="$services_to_log $(resolve_services "$1")"
-                    fi
+                    # Treat as service name (resolve aliases like slip → slipstream, tg → telemt)
+                    local resolved_svc
+                    resolved_svc=$(resolve_service "$1")
+                    services_to_log="${services_to_log:+$services_to_log }$resolved_svc"
                 fi
                 shift
                 ;;
@@ -4644,7 +4641,13 @@ cmd_regenerate_users() {
         cdn_domain="${cdn_subdomain}.${domain}"
     fi
     local cdn_ws_path=$(grep -E '^CDN_WS_PATH=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    # Fall back to bootstrap-generated path from state
+    if [[ -z "$cdn_ws_path" ]]; then
+        cdn_ws_path=$(docker run --rm -v moav_moav_state:/state alpine cat /state/keys/cdn.env 2>/dev/null | grep '^CDN_WS_PATH=' | cut -d= -f2 || true)
+    fi
     cdn_ws_path="${cdn_ws_path:-/ws}"
+    local cdn_transport=$(grep -E '^CDN_TRANSPORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    cdn_transport="${cdn_transport:-httpupgrade}"
 
     # Load ENABLE_* settings from .env
     local enable_reality=$(grep -E '^ENABLE_REALITY=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
@@ -4674,6 +4677,7 @@ cmd_regenerate_users() {
             -e "CDN_SUBDOMAIN=$cdn_subdomain" \
             -e "CDN_DOMAIN=$cdn_domain" \
             -e "CDN_WS_PATH=$cdn_ws_path" \
+            -e "CDN_TRANSPORT=$cdn_transport" \
             -e "ENABLE_REALITY=${enable_reality:-true}" \
             -e "ENABLE_TROJAN=${enable_trojan:-true}" \
             -e "ENABLE_HYSTERIA2=${enable_hysteria2:-true}" \

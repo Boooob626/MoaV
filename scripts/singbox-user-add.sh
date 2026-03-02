@@ -187,7 +187,7 @@ REALITY_TARGET_HOST=$(echo "$REALITY_TARGET" | cut -d: -f1)
 # -----------------------------------------------------------------------------
 
 # Reality link (IPv4)
-REALITY_LINK="vless://${USER_UUID}@${SERVER_IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET_HOST}&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#MoaV-Reality-${USERNAME}"
+REALITY_LINK="vless://${USER_UUID}@${SERVER_IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET_HOST}&fp=random&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#MoaV-Reality-${USERNAME}"
 echo "$REALITY_LINK" > "$OUTPUT_DIR/reality.txt"
 
 # Trojan link (IPv4)
@@ -200,7 +200,7 @@ echo "$HY2_LINK" > "$OUTPUT_DIR/hysteria2.txt"
 
 # Generate IPv6 links if available
 if [[ -n "$SERVER_IPV6" ]]; then
-    REALITY_LINK_V6="vless://${USER_UUID}@[${SERVER_IPV6}]:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET_HOST}&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#MoaV-Reality-${USERNAME}-IPv6"
+    REALITY_LINK_V6="vless://${USER_UUID}@[${SERVER_IPV6}]:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET_HOST}&fp=random&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#MoaV-Reality-${USERNAME}-IPv6"
     echo "$REALITY_LINK_V6" > "$OUTPUT_DIR/reality-ipv6.txt"
 
     TROJAN_LINK_V6="trojan://${USER_PASSWORD}@[${SERVER_IPV6}]:8443?security=tls&sni=${DOMAIN}&type=tcp#MoaV-Trojan-${USERNAME}-IPv6"
@@ -236,18 +236,25 @@ if [[ -z "$CDN_DOMAIN" ]]; then
         CDN_DOMAIN="${CDN_SUBDOMAIN}.${DOMAIN_FROM_ENV}"
     fi
 fi
-CDN_WS_PATH="${CDN_WS_PATH:-$(grep -E '^CDN_WS_PATH=' .env 2>/dev/null | cut -d= -f2 | tr -d '"' || echo "/ws")}"
+# Load CDN WS path: .env → state file (bootstrap-generated) → fallback
+CDN_WS_PATH="${CDN_WS_PATH:-$(grep -E '^CDN_WS_PATH=' .env 2>/dev/null | cut -d= -f2 | tr -d '"' || true)}"
+if [[ -z "${CDN_WS_PATH:-}" ]]; then
+    # Check bootstrap-generated state (persisted random path)
+    CDN_WS_PATH=$(docker run --rm -v moav_moav_state:/state alpine cat /state/keys/cdn.env 2>/dev/null | grep '^CDN_WS_PATH=' | cut -d= -f2 || true)
+fi
 CDN_WS_PATH="${CDN_WS_PATH:-/ws}"
+CDN_TRANSPORT="${CDN_TRANSPORT:-$(grep -E '^CDN_TRANSPORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"' || true)}"
+CDN_TRANSPORT="${CDN_TRANSPORT:-httpupgrade}"
 
 if [[ -n "$CDN_DOMAIN" ]]; then
-    CDN_LINK="vless://${USER_UUID}@${CDN_DOMAIN}:443?security=tls&type=ws&path=${CDN_WS_PATH}&sni=${CDN_DOMAIN}&host=${CDN_DOMAIN}&fp=chrome&alpn=http/1.1#MoaV-CDN-${USERNAME}"
-    echo "$CDN_LINK" > "$OUTPUT_DIR/cdn-vless-ws.txt"
+    CDN_LINK="vless://${USER_UUID}@${CDN_DOMAIN}:443?security=tls&type=${CDN_TRANSPORT}&path=${CDN_WS_PATH}&sni=${CDN_DOMAIN}&host=${CDN_DOMAIN}&fp=random&alpn=http/1.1#MoaV-CDN-${USERNAME}"
+    echo "$CDN_LINK" > "$OUTPUT_DIR/cdn-vless.txt"
 
     if command -v qrencode &>/dev/null; then
-        qrencode -o "$OUTPUT_DIR/cdn-vless-ws-qr.png" -s 6 "$CDN_LINK" 2>/dev/null || true
+        qrencode -o "$OUTPUT_DIR/cdn-vless-qr.png" -s 6 "$CDN_LINK" 2>/dev/null || true
     fi
 
-    log_info "Generated CDN VLESS+WS link (domain: $CDN_DOMAIN)"
+    log_info "Generated CDN VLESS link (transport: $CDN_TRANSPORT, domain: $CDN_DOMAIN)"
 fi
 
 # Add user to TrustTunnel (if config exists)
