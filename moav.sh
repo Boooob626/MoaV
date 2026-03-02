@@ -1284,43 +1284,50 @@ check_env_additions() {
     [[ ! -f "$env_file" ]] && return 0
     [[ ! -f "$example_file" ]] && return 0
 
-    # Extract variable names (lines matching KEY=value, skip comments and empty lines)
-    local env_vars example_vars
-    env_vars=$(grep '^[A-Z_]' "$env_file" 2>/dev/null | sed 's/=.*//' | sort -u)
-    example_vars=$(grep '^[A-Z_]' "$example_file" 2>/dev/null | sed 's/=.*//' | sort -u)
+    # Build list of missing variables (in .env.example but not in .env)
+    # Use temp files to avoid set -e issues with pipelines and process substitution
+    local tmp_env tmp_example tmp_missing
+    tmp_env=$(mktemp)
+    tmp_example=$(mktemp)
+    tmp_missing=$(mktemp)
+    trap "rm -f '$tmp_env' '$tmp_example' '$tmp_missing'" RETURN
 
-    # Bail if either extraction failed
-    [[ -z "$env_vars" || -z "$example_vars" ]] && return 0
+    # Extract variable names from both files
+    grep '^[A-Z_]' "$env_file" | sed 's/=.*//' | sort -u > "$tmp_env" 2>/dev/null || true
+    grep '^[A-Z_]' "$example_file" | sed 's/=.*//' | sort -u > "$tmp_example" 2>/dev/null || true
 
-    # Find variables in .env.example but not in .env
-    local missing_vars
-    missing_vars=$(comm -23 <(echo "$example_vars") <(echo "$env_vars"))
+    # Bail if either file had no variables
+    [[ ! -s "$tmp_env" || ! -s "$tmp_example" ]] && return 0
 
-    [[ -z "$missing_vars" ]] && return 0
+    # Find missing variables
+    comm -23 "$tmp_example" "$tmp_env" > "$tmp_missing" 2>/dev/null || true
 
-    # Build display list and extract lines with context from .env.example
-    local missing_count=0
+    local missing_count
+    missing_count=$(wc -l < "$tmp_missing" | tr -d ' ')
+    [[ "$missing_count" -eq 0 ]] && return 0
+
+    # Build display list and append block
     local display_lines=""
     local append_block=""
 
     while IFS= read -r var; do
         [[ -z "$var" ]] && continue
-        missing_count=$((missing_count + 1))
 
         # Get the value line from .env.example
         local value_line
-        value_line=$(grep "^${var}=" "$example_file")
+        value_line=$(grep "^${var}=" "$example_file" | head -1) || true
+        [[ -z "$value_line" ]] && continue
 
-        # Get preceding comment lines (walk backwards from the variable line)
+        # Get preceding comment lines (walk backwards)
         local line_num comments=""
-        line_num=$(grep -n "^${var}=" "$example_file" | head -1 | cut -d: -f1)
+        line_num=$(grep -n "^${var}=" "$example_file" | head -1 | cut -d: -f1) || true
 
         if [[ -n "$line_num" ]]; then
             local prev=$((line_num - 1))
             while [[ $prev -gt 0 ]]; do
                 local prev_line
-                prev_line=$(sed -n "${prev}p" "$example_file")
-                if [[ "$prev_line" =~ ^# ]]; then
+                prev_line=$(sed -n "${prev}p" "$example_file") || true
+                if [[ "$prev_line" =~ ^#[^!] ]]; then
                     comments="${prev_line}"$'\n'"${comments}"
                     prev=$((prev - 1))
                 else
@@ -1344,9 +1351,9 @@ check_env_additions() {
         fi
         append_block+="${value_line}"$'\n'
 
-    done <<< "$missing_vars"
+    done < "$tmp_missing"
 
-    [[ $missing_count -eq 0 ]] && return 0
+    [[ -z "$append_block" ]] && return 0
 
     echo ""
     info "New configuration options available ($missing_count):"
@@ -1356,7 +1363,6 @@ check_env_additions() {
     read -r -p "Add these to your .env with default values? [Y/n] " add_vars
 
     if [[ ! "$add_vars" =~ ^[Nn]$ ]]; then
-        # Append with a separator
         {
             echo ""
             echo "# ── Added by moav update ($(date +%Y-%m-%d)) ──"
@@ -1368,8 +1374,7 @@ check_env_additions() {
         echo -e "Review with: ${WHITE}cat .env${NC}"
     else
         echo ""
-        echo "Skipped. To add later, compare:"
-        echo "  diff <(grep '^[A-Z]' .env.example | cut -d= -f1 | sort) <(grep '^[A-Z]' .env | cut -d= -f1 | sort)"
+        echo "Skipped. To add later, compare .env.example vs .env"
     fi
 }
 
