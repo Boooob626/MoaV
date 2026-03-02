@@ -63,6 +63,7 @@ public_port = ${port}
 [server]
 port = 993
 metrics_port = 9090
+metrics_whitelist = ["0.0.0.0/0"]
 
 [[server.listeners]]
 ip = "0.0.0.0"

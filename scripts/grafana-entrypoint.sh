@@ -177,7 +177,7 @@ star_dashboards() {
     API="http://localhost:3000/api"
 
     # Star all MoaV dashboards
-    for uid in moav-system moav-containers moav-singbox moav-wireguard moav-snowflake moav-conduit; do
+    for uid in moav-system moav-containers moav-singbox moav-wireguard moav-snowflake moav-conduit moav-telemt; do
         wget -q -O /dev/null --header="Content-Type: application/json" \
             --post-data="" \
             --auth-no-challenge \

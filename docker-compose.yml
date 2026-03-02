@@ -282,9 +282,6 @@ services:
     environment:
       - RUST_LOG=info
       - TZ=${TZ:-UTC}
-    # telemt metrics only binds IPv4; disable IPv6 so Prometheus resolves to IPv4
-    sysctls:
-      - net.ipv6.conf.all.disable_ipv6=1
     profiles:
       - telegram
       - all
