@@ -1286,8 +1286,11 @@ check_env_additions() {
 
     # Extract variable names (lines matching KEY=value, skip comments and empty lines)
     local env_vars example_vars
-    env_vars=$(grep -oP '^[A-Z_][A-Z0-9_]*(?==)' "$env_file" 2>/dev/null | sort -u)
-    example_vars=$(grep -oP '^[A-Z_][A-Z0-9_]*(?==)' "$example_file" 2>/dev/null | sort -u)
+    env_vars=$(grep '^[A-Z_]' "$env_file" 2>/dev/null | sed 's/=.*//' | sort -u)
+    example_vars=$(grep '^[A-Z_]' "$example_file" 2>/dev/null | sed 's/=.*//' | sort -u)
+
+    # Bail if either extraction failed
+    [[ -z "$env_vars" || -z "$example_vars" ]] && return 0
 
     # Find variables in .env.example but not in .env
     local missing_vars
