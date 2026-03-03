@@ -150,10 +150,9 @@ def check_service_status(name: str) -> str:
         "grafana": "moav-grafana",
     }
 
-    # Snowflake uses host networking, can't check from inside container
-    # Return "running" as default since we can't reliably detect from here
+    # Snowflake uses host networking, can't detect from inside container
     if name == "snowflake":
-        return "running"  # Assume running if profile is enabled
+        return "unknown"
 
     if name not in service_hosts:
         return "unknown"

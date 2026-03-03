@@ -201,12 +201,17 @@ for USERNAME in "${USERNAMES[@]}"; do
     # Add to WireGuard
     # -------------------------------------------------------------------------
     if [[ "${ENABLE_WIREGUARD:-true}" == "true" ]] && [[ -f "configs/wireguard/wg0.conf" ]]; then
-        log_info "[2/3] Adding to WireGuard..."
-        if "$SCRIPT_DIR/wg-user-add.sh" "$USERNAME" $RELOAD_FLAG; then
-            log_info "✓ WireGuard peer added"
+        # Check if WireGuard service is actually running or wg tools are available
+        if docker compose ps wireguard --status running &>/dev/null || command -v wg &>/dev/null; then
+            log_info "[2/3] Adding to WireGuard..."
+            if "$SCRIPT_DIR/wg-user-add.sh" "$USERNAME" $RELOAD_FLAG; then
+                log_info "✓ WireGuard peer added"
+            else
+                ERRORS+=("wireguard")
+                log_error "✗ Failed to add WireGuard peer"
+            fi
         else
-            ERRORS+=("wireguard")
-            log_error "✗ Failed to add WireGuard peer"
+            log_info "[2/3] Skipping WireGuard (service not running)"
         fi
     else
         log_info "[2/3] Skipping WireGuard (not enabled or not configured)"
