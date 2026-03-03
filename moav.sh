@@ -694,6 +694,70 @@ is_installed() {
     [[ -L "$INSTALL_PATH" ]] && [[ "$(readlink "$INSTALL_PATH")" == "$SCRIPT_DIR/moav.sh" ]]
 }
 
+install_completions() {
+    local comp_src="$SCRIPT_DIR/completions/moav.bash"
+    if [[ ! -f "$comp_src" ]]; then
+        return 0
+    fi
+
+    local installed=false
+
+    # System-wide bash completions
+    if [[ -d "/etc/bash_completion.d" ]]; then
+        if [[ -w "/etc/bash_completion.d" ]]; then
+            cp "$comp_src" "/etc/bash_completion.d/moav"
+        else
+            sudo cp "$comp_src" "/etc/bash_completion.d/moav" 2>/dev/null || true
+        fi
+        installed=true
+    fi
+
+    # User-level bash completions (fallback)
+    if [[ "$installed" != "true" ]]; then
+        local user_comp_dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+        mkdir -p "$user_comp_dir" 2>/dev/null
+        cp "$comp_src" "$user_comp_dir/moav" 2>/dev/null || true
+        installed=true
+    fi
+
+    # Zsh completions (if zsh is available)
+    if command -v zsh &>/dev/null; then
+        # Try common zsh completion directories
+        for zsh_dir in "/usr/local/share/zsh/site-functions" "/usr/share/zsh/site-functions"; do
+            if [[ -d "$zsh_dir" ]]; then
+                if [[ -w "$zsh_dir" ]]; then
+                    cp "$comp_src" "$zsh_dir/_moav"
+                else
+                    sudo cp "$comp_src" "$zsh_dir/_moav" 2>/dev/null || true
+                fi
+                break
+            fi
+        done
+    fi
+
+    if [[ "$installed" == "true" ]]; then
+        info "Shell completions installed (restart shell or run: source $comp_src)"
+    fi
+}
+
+uninstall_completions() {
+    local paths=(
+        "/etc/bash_completion.d/moav"
+        "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/moav"
+        "/usr/local/share/zsh/site-functions/_moav"
+        "/usr/share/zsh/site-functions/_moav"
+    )
+    for p in "${paths[@]}"; do
+        if [[ -f "$p" ]]; then
+            if [[ -w "$p" ]] || [[ -w "$(dirname "$p")" ]]; then
+                rm -f "$p"
+            else
+                sudo rm -f "$p" 2>/dev/null || true
+            fi
+        fi
+    done
+}
+
 do_install() {
     local script_path="$SCRIPT_DIR/moav.sh"
 
@@ -730,6 +794,10 @@ do_install() {
 
     if is_installed; then
         success "Installed! You can now run 'moav' from anywhere"
+
+        # Install shell completions
+        install_completions
+
         echo ""
         echo "  Examples:"
         echo "    moav              # Interactive menu"
@@ -947,6 +1015,9 @@ do_uninstall() {
         fi
     fi
 
+    # Remove shell completions
+    uninstall_completions
+
     # Remove global symlink
     if [[ -e "$INSTALL_PATH" ]]; then
         echo ""
@@ -958,6 +1029,7 @@ do_uninstall() {
                 sudo rm -f "$INSTALL_PATH"
             fi
             echo "  - $INSTALL_PATH"
+            echo "  - shell completions"
             success "Global command removed"
         else
             warn "$INSTALL_PATH is not a symlink, not removing"
