@@ -264,7 +264,7 @@ run_command() {
     echo -e "${WHITE}  $cmd${NC}"
     echo ""
 
-    if confirm "Execute this command?"; then
+    if confirm "Execute this command?" "y"; then
         echo ""
         eval "$cmd"
         return $?

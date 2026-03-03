@@ -621,6 +621,25 @@ if [[ "$singbox_needed" == "true" ]]; then
 
     envsubst < /configs/sing-box/config.json.template > /configs/sing-box/config.json
 
+    # Remove disabled protocol inbounds from the generated config
+    local config_file="/configs/sing-box/config.json"
+    if [[ "${ENABLE_TROJAN:-true}" != "true" ]]; then
+        jq 'del(.inbounds[] | select(.tag == "trojan-tls-in"))' "$config_file" > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
+        log_info "  Removed Trojan inbound (disabled)"
+    fi
+    if [[ "${ENABLE_HYSTERIA2:-true}" != "true" ]]; then
+        jq 'del(.inbounds[] | select(.tag == "hysteria2-in"))' "$config_file" > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
+        log_info "  Removed Hysteria2 inbound (disabled)"
+    fi
+    if [[ -z "${CDN_DOMAIN:-}" ]]; then
+        jq 'del(.inbounds[] | select(.tag == "vless-ws-in"))' "$config_file" > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
+        log_info "  Removed CDN VLESS inbound (no CDN domain)"
+    fi
+    if [[ "${ENABLE_REALITY:-true}" != "true" ]]; then
+        jq 'del(.inbounds[] | select(.tag == "vless-reality-in"))' "$config_file" > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
+        log_info "  Removed Reality inbound (disabled)"
+    fi
+
     log_info "sing-box configuration written to /configs/sing-box/config.json"
 else
     log_info "sing-box not needed (no TLS protocols enabled)"
