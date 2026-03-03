@@ -812,7 +812,7 @@ do_uninstall() {
         fi
 
         # Remove generated dnstt files
-        if ls "$SCRIPT_DIR/configs/dnstt/"*.key "$SCRIPT_DIR/configs/dnstt/server.conf" "$SCRIPT_DIR/configs/dnstt/server.pub" 2>/dev/null | head -1 >/dev/null; then
+        if ls "$SCRIPT_DIR/configs/dnstt/"*.key "$SCRIPT_DIR/configs/dnstt/server.conf" "$SCRIPT_DIR/configs/dnstt/server.pub" 2>/dev/null | head -1 >/dev/null 2>&1; then
             rm -f "$SCRIPT_DIR/configs/dnstt/server.conf" 2>/dev/null
             rm -f "$SCRIPT_DIR/configs/dnstt/server.pub" 2>/dev/null
             rm -f "$SCRIPT_DIR/configs/dnstt/"*.key 2>/dev/null
@@ -861,9 +861,9 @@ do_uninstall() {
         fi
 
         # Remove outputs (bundles, keys)
-        if [[ -d "$SCRIPT_DIR/outputs" ]] && [[ -n "$(ls -A "$SCRIPT_DIR/outputs" 2>/dev/null | grep -v .gitkeep)" ]]; then
+        if [[ -d "$SCRIPT_DIR/outputs" ]] && [[ -n "$(ls -A "$SCRIPT_DIR/outputs" 2>/dev/null | grep -v .gitkeep || true)" ]]; then
             local bundle_count
-            bundle_count=$(find "$SCRIPT_DIR/outputs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+            bundle_count=$(find "$SCRIPT_DIR/outputs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l || echo "0")
             find "$SCRIPT_DIR/outputs" -mindepth 1 -not -name '.gitkeep' -delete 2>/dev/null || true
             echo "  - outputs/ ($bundle_count user bundles)"
         fi
@@ -871,8 +871,8 @@ do_uninstall() {
         # Remove state directory (user credentials)
         if [[ -d "$SCRIPT_DIR/state" ]]; then
             local user_count
-            user_count=$(find "$SCRIPT_DIR/state/users" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-            rm -rf "$SCRIPT_DIR/state/" 2>/dev/null
+            user_count=$(find "$SCRIPT_DIR/state/users" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l || echo "0")
+            rm -rf "$SCRIPT_DIR/state/" 2>/dev/null || true
             echo "  - state/ ($user_count users)"
         fi
 
