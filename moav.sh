@@ -442,7 +442,7 @@ check_prerequisites() {
     else
         warn ".env file not found"
         if [[ -f ".env.example" ]]; then
-            if confirm "Copy .env.example to .env?"; then
+            if confirm "Copy .env.example to .env?" "y"; then
                 cp .env.example .env
                 success "Created .env from .env.example"
                 echo ""
@@ -531,21 +531,24 @@ check_prerequisites() {
                     warn "No domain provided!"
                     echo ""
                     echo -e "  ${YELLOW}Services that require a domain (will be disabled):${NC}"
-                    echo "    • Reality, Trojan, Hysteria2 (sing-box proxy)"
+                    echo "    • Reality, Trojan, Hysteria2, CDN VLESS (sing-box proxy)"
+                    echo "    • TrustTunnel"
                     echo "    • DNS tunnels (dnstt + Slipstream)"
-                    echo "    • Admin dashboard with HTTPS"
                     echo ""
                     echo -e "  ${GREEN}Services that work without a domain:${NC}"
                     echo "    • WireGuard (direct UDP)"
+                    echo "    • AmneziaWG (DPI-resistant WireGuard)"
+                    echo "    • Telegram MTProxy (fake-TLS, IP only)"
+                    echo "    • Admin dashboard (self-signed certificate)"
                     echo "    • Psiphon Conduit (bandwidth donation)"
                     echo "    • Tor Snowflake (bandwidth donation)"
                     echo ""
 
-                    if confirm "Continue with domain-less mode?" "n"; then
+                    if confirm "Continue with domain-less mode?" "y"; then
                         domainless_mode=true
-                        # Set default profiles to only include domain-less services (admin uses self-signed cert)
-                        sed -i "s|^DEFAULT_PROFILES=.*|DEFAULT_PROFILES=\"wireguard admin conduit snowflake\"|" .env
-                        # Disable all protocols that need domain (admin works with self-signed cert)
+                        # Set default profiles to include all domain-less services
+                        sed -i "s|^DEFAULT_PROFILES=.*|DEFAULT_PROFILES=\"wireguard amneziawg telegram admin conduit snowflake\"|" .env
+                        # Disable all protocols that need domain
                         # Use grep to check if line exists, then sed to replace, or append if missing
                         for var in ENABLE_REALITY ENABLE_TROJAN ENABLE_HYSTERIA2 ENABLE_DNSTT ENABLE_SLIPSTREAM ENABLE_TRUSTTUNNEL; do
                             if grep -q "^${var}=" .env 2>/dev/null; then
@@ -555,7 +558,7 @@ check_prerequisites() {
                             fi
                         done
                         success "Domain-less mode enabled"
-                        info "WireGuard, Admin (self-signed cert), Conduit, and Snowflake will be available"
+                        info "WireGuard, AmneziaWG, Telegram MTProxy, Admin, Conduit, and Snowflake will be available"
                     else
                         echo ""
                         info "Please enter a domain to use all services."
@@ -2851,7 +2854,7 @@ show_usage() {
     echo "  update [-b BRANCH]    Update MoaV (git pull), optionally switch branch"
     echo "  check                 Run prerequisites check"
     echo "  bootstrap             Run first-time setup (includes service selection)"
-    echo "  domainless            Enable domain-less mode (WireGuard, Conduit, Snowflake only)"
+    echo "  domainless            Enable domain-less mode (WireGuard, AmneziaWG, Telegram MTProxy, etc.)"
     echo "  profiles              Change default services for 'moav start'"
     echo "  start [PROFILE...]    Start services (uses DEFAULT_PROFILES from .env)"
     echo "  stop [SERVICE...] [-r] Stop services (default: all, -r removes containers)"
@@ -2924,12 +2927,15 @@ cmd_domainless() {
     info "Domain-less mode disables TLS-based protocols that require a domain."
     echo ""
     echo -e "  ${YELLOW}Will be disabled:${NC}"
-    echo "    • Reality, Trojan, Hysteria2 (sing-box proxy)"
+    echo "    • Reality, Trojan, Hysteria2, CDN VLESS (sing-box proxy)"
+    echo "    • TrustTunnel"
     echo "    • DNS tunnels (dnstt + Slipstream)"
-    echo "    • Admin dashboard with HTTPS"
     echo ""
     echo -e "  ${GREEN}Will remain available:${NC}"
     echo "    • WireGuard (direct UDP)"
+    echo "    • AmneziaWG (DPI-resistant WireGuard)"
+    echo "    • Telegram MTProxy (fake-TLS, IP only)"
+    echo "    • Admin dashboard (self-signed certificate)"
     echo "    • Psiphon Conduit (bandwidth donation)"
     echo "    • Tor Snowflake (bandwidth donation)"
     echo ""
@@ -2951,7 +2957,7 @@ cmd_domainless() {
     fi
 
     # Disable TLS-based protocols (add if not present, update if present)
-    for var in ENABLE_REALITY ENABLE_TROJAN ENABLE_HYSTERIA2 ENABLE_DNSTT ENABLE_SLIPSTREAM ENABLE_ADMIN_UI; do
+    for var in ENABLE_REALITY ENABLE_TROJAN ENABLE_HYSTERIA2 ENABLE_DNSTT ENABLE_SLIPSTREAM ENABLE_TRUSTTUNNEL; do
         if grep -q "^${var}=" .env; then
             sed -i "s/^${var}=.*/${var}=false/" .env
         else
@@ -2968,9 +2974,9 @@ cmd_domainless() {
 
     # Set default profiles (add if not present)
     if grep -q "^DEFAULT_PROFILES=" .env; then
-        sed -i 's/^DEFAULT_PROFILES=.*/DEFAULT_PROFILES="wireguard conduit snowflake"/' .env
+        sed -i 's/^DEFAULT_PROFILES=.*/DEFAULT_PROFILES="wireguard amneziawg telegram admin conduit snowflake"/' .env
     else
-        echo 'DEFAULT_PROFILES="wireguard conduit snowflake"' >> .env
+        echo 'DEFAULT_PROFILES="wireguard amneziawg telegram admin conduit snowflake"' >> .env
     fi
 
     echo ""
