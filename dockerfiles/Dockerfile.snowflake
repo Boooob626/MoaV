@@ -2,19 +2,20 @@
 # https://snowflake.torproject.org/
 #
 # The official image is minimal, so we build our own with bandwidth limiting
+#
+# Uses Go module proxy (proxy.golang.org) instead of git clone from
+# gitlab.torproject.org, which is blocked in Russia and other countries.
 FROM golang:1.23-alpine AS builder
 
 ARG SNOWFLAKE_VERSION=2.11.0
 
-RUN apk add --no-cache git
-
-# Clone and build snowflake proxy (pinned to specific version)
-RUN git clone --depth 1 --branch v${SNOWFLAKE_VERSION} \
-    https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake.git /snowflake
-WORKDIR /snowflake/proxy
+# Build snowflake proxy via Go module proxy (bypasses gitlab.torproject.org blocks)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags="-s -w" -o /bin/proxy
+    GOPROXY=https://proxy.golang.org,direct \
+    CGO_ENABLED=0 \
+    go install -ldflags="-s -w" \
+    gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/v2/proxy@v${SNOWFLAKE_VERSION}
 
 # Final image
 FROM alpine:3.21
@@ -23,8 +24,8 @@ RUN apk add --no-cache \
     iproute2 \
     ca-certificates
 
-# Copy the built binary
-COPY --from=builder /bin/proxy /bin/proxy
+# Copy the built binary (go install places it in $GOPATH/bin/)
+COPY --from=builder /go/bin/proxy /bin/proxy
 
 # Copy entrypoint script
 COPY scripts/snowflake-entrypoint.sh /entrypoint.sh

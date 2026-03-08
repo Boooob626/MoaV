@@ -27,6 +27,24 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 go build -o /dnstt-client . || touch /dnstt-client
 
 # =============================================================================
+# Builder stage - build snowflake-client via Go module proxy
+# =============================================================================
+# Uses proxy.golang.org to bypass gitlab.torproject.org blocks (Russia, etc.)
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS snowflake-builder
+
+ARG TARGETARCH
+ARG TARGETOS=linux
+ARG SNOWFLAKE_VERSION=2.11.0
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    GOPROXY=https://proxy.golang.org,direct \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
+    go install -ldflags="-s -w" \
+    gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/v2/client@v${SNOWFLAKE_VERSION} && \
+    cp /go/bin/${TARGETOS}_${TARGETARCH}/client /go/bin/client 2>/dev/null || true
+
+# =============================================================================
 # Builder stage - download slipstream-client (Rust, glibc-linked)
 # Must run on Debian since the binary requires full glibc (__res_init, _Unwind_*)
 # =============================================================================
@@ -128,14 +146,11 @@ RUN ARCH=$(cat /tmp/arch) && \
     echo "wstunnel ${WSTUNNEL_VERSION} installed (${ARCH})" || \
     echo "wstunnel: download failed (optional, needed for WireGuard-wstunnel)"
 
-# snowflake-client: download pre-built binary
-RUN ARCH=$(cat /tmp/arch) && \
-    echo "Downloading snowflake-client for ${ARCH}..." && \
-    wget -qO /usr/local/bin/snowflake-client \
-    "https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/-/releases/v${SNOWFLAKE_VERSION}/downloads/client/snowflake-client-linux-${ARCH}" && \
-    chmod +x /usr/local/bin/snowflake-client && \
-    echo "snowflake-client ${SNOWFLAKE_VERSION} installed (${ARCH})" || \
-    echo "snowflake-client: download failed (optional, needed for Tor)"
+# snowflake-client: build via Go module proxy (bypasses gitlab.torproject.org blocks)
+COPY --from=snowflake-builder /go/bin/client /usr/local/bin/snowflake-client
+RUN chmod +x /usr/local/bin/snowflake-client && \
+    echo "snowflake-client installed" || \
+    echo "snowflake-client: not available (optional, needed for Tor)"
 
 # dnstt-client: copy cross-compiled binary from builder
 COPY --from=dnstt-builder /dnstt-client /usr/local/bin/dnstt-client
