@@ -95,6 +95,9 @@ configs/dns-router/
 *.sqlite
 *.sqlite3
 
+# MkDocs build output (built in CI)
+site/docs/
+
 # Misc
 spec.yaml
 .claude/settings.local.json
