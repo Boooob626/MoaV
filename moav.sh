@@ -1692,31 +1692,39 @@ get_running_services() {
 }
 
 show_versions() {
-    local singbox_ver wstunnel_ver conduit_ver slipstream_ver telemt_ver
+    local singbox_ver wstunnel_ver conduit_ver snowflake_ver slipstream_ver telemt_ver
+    local trusttunnel_ver trusttunnel_client_ver awgtools_ver
     singbox_ver=$(get_component_version "SINGBOX_VERSION" "1.12.17")
     wstunnel_ver=$(get_component_version "WSTUNNEL_VERSION" "10.5.1")
     conduit_ver=$(get_component_version "CONDUIT_VERSION" "1.2.0")
+    snowflake_ver=$(get_component_version "SNOWFLAKE_VERSION" "latest")
     slipstream_ver=$(get_component_version "SLIPSTREAM_VERSION" "2026.02.22.1")
     telemt_ver=$(get_component_version "TELEMT_VERSION" "3.1.3")
+    trusttunnel_ver=$(get_component_version "TRUSTTUNNEL_VERSION" "")
+    trusttunnel_client_ver=$(get_component_version "TRUSTTUNNEL_CLIENT_VERSION" "")
+    awgtools_ver=$(get_component_version "AWGTOOLS_VERSION" "")
 
     echo ""
     echo -e "${CYAN}MoaV${NC} v${VERSION}"
-    echo -e "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo -e "  ${WHITE}Component Versions:${NC}"
     echo ""
-    echo -e "  ${CYAN}┌──────────────┬──────────┬──────────────────────────────────┐${NC}"
-    echo -e "  ${CYAN}│${NC} ${WHITE}Component${NC}    ${CYAN}│${NC} ${WHITE}Version${NC}  ${CYAN}│${NC} ${WHITE}Source${NC}                           ${CYAN}│${NC}"
-    echo -e "  ${CYAN}├──────────────┼──────────┼──────────────────────────────────┤${NC}"
-    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${GREEN}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "sing-box" "$singbox_ver" "github.com/SagerNet/sing-box"
-    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${GREEN}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "wstunnel" "$wstunnel_ver" "github.com/erebe/wstunnel"
-    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${GREEN}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "conduit" "$conduit_ver" "github.com/Psiphon-Inc/conduit"
-    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${DIM}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "snowflake" "latest" "torproject.org (built from src)"
-    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${DIM}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "dnstt" "latest" "bamsoftware.com (built from src)"
-    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${GREEN}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "slipstream" "$slipstream_ver" "github.com/Mygod/slipstream-rust"
-    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${GREEN}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "telemt" "$telemt_ver" "github.com/telemt/telemt"
-    printf "  ${CYAN}│${NC} %-12s ${CYAN}│${NC} ${DIM}%-8s${NC} ${CYAN}│${NC} %-32s ${CYAN}│${NC}\n" "wireguard" "alpine" "wireguard-tools package"
-    echo -e "  ${CYAN}└──────────────┴──────────┴──────────────────────────────────┘${NC}"
+    echo -e "  ${CYAN}┌──────────────────┬────────────────┬──────────────────────────────────────────┐${NC}"
+    echo -e "  ${CYAN}│${NC} ${WHITE}Component${NC}        ${CYAN}│${NC} ${WHITE}Version${NC}        ${CYAN}│${NC} ${WHITE}Source${NC}                                   ${CYAN}│${NC}"
+    echo -e "  ${CYAN}├──────────────────┼────────────────┼──────────────────────────────────────────┤${NC}"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "sing-box" "$singbox_ver" "github.com/SagerNet/sing-box"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "wstunnel" "$wstunnel_ver" "github.com/erebe/wstunnel"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "trusttunnel" "$trusttunnel_ver" "github.com/TrustTunnel/TrustTunnel"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "trusttunnel-cli" "$trusttunnel_client_ver" "github.com/TrustTunnel/TrustTunnelClient"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "amneziawg" "$awgtools_ver" "github.com/amnezia-vpn/amneziawg-tools"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "conduit" "$conduit_ver" "github.com/Psiphon-Inc/conduit"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "snowflake" "$snowflake_ver" "torproject.org (built from src)"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${DIM}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "dnstt" "latest" "bamsoftware.com (built from src)"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "slipstream" "$slipstream_ver" "github.com/Mygod/slipstream-rust"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${GREEN}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "telemt" "$telemt_ver" "github.com/telemt/telemt"
+    printf "  ${CYAN}│${NC} %-16s ${CYAN}│${NC} ${DIM}%-14s${NC} ${CYAN}│${NC} %-40s ${CYAN}│${NC}\n" "wireguard" "alpine" "wireguard-tools package"
+    echo -e "  ${CYAN}└──────────────────┴────────────────┴──────────────────────────────────────────┘${NC}"
     echo ""
     echo -e "  ${DIM}Versions can be changed in .env and rebuilt with: moav build${NC}"
     echo ""
