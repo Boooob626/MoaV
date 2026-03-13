@@ -3333,9 +3333,9 @@ cmd_donate_mahsanet_remove() {
         local del_code
         del_code=$(echo "$del_response" | tail -1)
         if [[ "$del_code" == "204" || "$del_code" == "200" ]]; then
-            ((removed++))
+            removed=$((removed + 1))
         else
-            ((failed++))
+            failed=$((failed + 1))
             warn "Failed to remove config $id (HTTP $del_code)"
         fi
     done
@@ -3504,14 +3504,14 @@ cmd_donate_mahsanet_donate() {
 
             if [[ -z "$link_file" ]]; then
                 warn "Unknown protocol: $protocol (skipping)"
-                ((skipped++))
+                skipped=$((skipped + 1))
                 continue
             fi
 
             local filepath="$bundle_dir/$link_file"
             if [[ ! -f "$filepath" ]]; then
                 warn "$username: $protocol config not found ($link_file) — skipping"
-                ((skipped++))
+                skipped=$((skipped + 1))
                 continue
             fi
 
@@ -3520,16 +3520,19 @@ cmd_donate_mahsanet_donate() {
 
             if ! mahsanet_validate_link "$link" "$protocol"; then
                 warn "$username: $protocol link failed sanity check — skipping"
-                ((skipped++))
+                echo "    link preview: ${link:0:80}..."
+                skipped=$((skipped + 1))
                 continue
             fi
+
+            echo -e "  ${WHITE}→${NC} $username/$protocol: submitting..."
 
             # POST to MahsaNet API
             local json_data
             json_data=$(jq -n \
                 --arg url "$link" \
                 --arg pool "$pool" \
-                '{"url": $url, "ads_url": "", "pool": $pool, "use_mux": false, "use_fragment": false}')
+                '{"url": $url, "ads_url": $url, "pool": $pool, "use_mux": false, "use_fragment": false}')
 
             local response
             response=$(mahsanet_api_call "POST" "" "$json_data" "$api_key")
@@ -3542,13 +3545,13 @@ cmd_donate_mahsanet_donate() {
                 local config_id
                 config_id=$(echo "$body" | jq -r '.hash // .id // "unknown"')
                 mahsanet_save_donation "$config_id" "$username" "$protocol"
-                ((donated++))
+                donated=$((donated + 1))
                 echo -e "  ${GREEN}✓${NC} $username/$protocol → donated (id: $config_id)"
             else
-                ((failed++))
+                failed=$((failed + 1))
                 local err_msg
                 err_msg=$(echo "$body" | jq -r '.detail // .url // .non_field_errors // "unknown error"' 2>/dev/null || echo "HTTP $http_code")
-                echo -e "  ${RED}✗${NC} $username/$protocol → failed: $err_msg"
+                echo -e "  ${RED}✗${NC} $username/$protocol → failed ($http_code): $err_msg"
             fi
         done
     done

@@ -775,7 +775,7 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
             try:
                 resp = await mahsanet_api_call("POST", "", {
                     "url": link,
-                    "ads_url": "",
+                    "ads_url": link,
                     "pool": MAHSANET_POOL,
                     "use_mux": False,
                     "use_fragment": False,
