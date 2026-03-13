@@ -617,7 +617,10 @@
         <div class="section">
             <div class="section-head">
                 <h2>MahsaNet</h2>
-                <button class="btn btn-green" onclick="toggleDonatePanel()">+ Donate</button>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="btn" onclick="loadMahsanetConfigs()">Refresh</button>
+                    <button class="btn btn-green" onclick="toggleDonatePanel()">+ Donate</button>
+                </div>
             </div>
             <div id="donate-panel" class="create-panel">
                 <form class="donate-form" onsubmit="return donateMahsanet(event)">
@@ -741,15 +744,7 @@
     </div>
 
     <script>
-        let creating = false;
         let panelOpen = false;
-        function scheduleRefresh() {
-            return setTimeout(() => {
-                if (!creating && !panelOpen) location.reload();
-                else refreshTimer = scheduleRefresh();
-            }, 60000);
-        }
-        let refreshTimer = scheduleRefresh();
 
         function toggleCreatePanel() {
             const panel = document.getElementById('create-panel');
@@ -789,8 +784,6 @@
             if (!username) { alert('Enter a username'); return false; }
             if (batchOn && batch < 1) { alert('Enter a batch count'); return false; }
 
-            creating = true;
-            clearTimeout(refreshTimer);
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Creating...';
             result.style.display = 'none';
@@ -812,25 +805,19 @@
             } catch (err) {
                 showResult(result, 'error', 'Request failed: ' + err.message);
             } finally {
-                creating = false;
                 btn.disabled = false;
                 btn.innerHTML = 'Create';
-                refreshTimer = scheduleRefresh();
             }
             return false;
         }
 
         {% if mahsanet_configured %}
         /* MahsaNet donation functions */
-        let donating = false;
-        let donatePanelOpen = false;
-
         function toggleDonatePanel() {
             const panel = document.getElementById('donate-panel');
             const btn = event.target;
             panel.classList.toggle('open');
-            donatePanelOpen = panel.classList.contains('open');
-            btn.textContent = donatePanelOpen ? '- Close' : '+ Donate';
+            btn.textContent = panel.classList.contains('open') ? '- Close' : '+ Donate';
         }
 
         function showDonateResult(cls, text) {
@@ -854,9 +841,6 @@
             if (!prefix) { alert('Enter a prefix'); return false; }
             if (protocols.length === 0) { alert('Select at least one protocol'); return false; }
 
-            donating = true;
-            creating = true;
-            clearTimeout(refreshTimer);
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Donating...';
             document.getElementById('donate-result').style.display = 'none';
@@ -874,18 +858,14 @@
                     if (data.errors.length) msg += `\nWarnings: ${data.errors.join('\n')}`;
                     showDonateResult('success', msg);
                     loadMahsanetConfigs();
-                    setTimeout(() => location.reload(), 3000);
                 } else {
                     showDonateResult('error', data.detail || data.errors?.join('\n') || 'Failed');
                 }
             } catch (err) {
                 showDonateResult('error', 'Request failed: ' + err.message);
             } finally {
-                donating = false;
-                creating = false;
                 btn.disabled = false;
                 btn.innerHTML = 'Donate';
-                refreshTimer = scheduleRefresh();
             }
             return false;
         }
@@ -942,8 +922,6 @@
             }
         }
 
-        /* Load on page load */
-        loadMahsanetConfigs();
         {% endif %}
     </script>
 </body>
