@@ -3368,9 +3368,36 @@ cmd_donate_mahsanet() {
             --list)    action="list"; shift ;;
             --status)  action="status"; shift ;;
             --remove)  action="remove"; shift ;;
+            --help|-h) action="help"; shift ;;
             *)         shift ;;
         esac
     done
+
+    if [[ "$action" == "help" ]]; then
+        echo "Usage: moav donate mahsanet [options]"
+        echo ""
+        echo "Donate VPN configs to MahsaServer.com (Mahsa VPN, 2M+ users in Iran)"
+        echo ""
+        echo "Options:"
+        echo "  (none)      Generate users and donate configs"
+        echo "  --setup     Set up MahsaNet API key"
+        echo "  --list      List donated configs"
+        echo "  --status    Show donation status"
+        echo "  --remove    Remove all donated configs"
+        echo "  --help      Show this help message"
+        echo ""
+        echo "Configuration (.env):"
+        echo "  MAHSANET_API_KEY         API key from mahsaserver.com/user/api"
+        echo "  MAHSANET_PROTOCOLS       Protocols to donate (default: reality hysteria2 telegram)"
+        echo "  MAHSANET_POOL            Pool name (default: mahsa)"
+        echo ""
+        echo "Examples:"
+        echo "  moav donate mahsanet --setup      # Configure API key"
+        echo "  moav donate mahsanet              # Generate users and donate"
+        echo "  moav donate mahsanet --list       # List donated configs"
+        echo "  moav donate mahsanet --remove     # Remove all donated configs"
+        return 0
+    fi
 
     # Setup doesn't need API key validation
     if [[ "$action" == "setup" ]]; then
