@@ -614,7 +614,7 @@ async def download_bundle(username: str, _: str = Depends(verify_auth)):
 
 MAHSANET_API_URL = "https://www.mahsaserver.com/backend/api/v1/config/"
 MAHSANET_API_KEY = os.environ.get("MAHSANET_API_KEY", "")
-MAHSANET_PROTOCOLS = os.environ.get("MAHSANET_PROTOCOLS", "reality hysteria2").split()
+MAHSANET_PROTOCOLS = os.environ.get("MAHSANET_PROTOCOLS", "reality hysteria2 telegram").split()
 MAHSANET_POOL = os.environ.get("MAHSANET_POOL", "mahsa")
 
 PROTOCOL_FILE_MAP = {
@@ -623,6 +623,7 @@ PROTOCOL_FILE_MAP = {
     "trojan": "trojan.txt",
     "cdn": "cdn-vless.txt",
     "xhttp": "xhttp-vless.txt",
+    "telegram": "telegram-proxy-link.txt",
 }
 
 PROTOCOL_PREFIX_MAP = {
@@ -631,12 +632,18 @@ PROTOCOL_PREFIX_MAP = {
     "trojan": "trojan://",
     "cdn": "vless://",
     "xhttp": "vless://",
+    "telegram": "tg://proxy",
 }
 
 
 def validate_share_link(link: str, protocol: str) -> bool:
     """Validate a share link has correct format."""
-    if not link or len(link) < 50:
+    if not link:
+        return False
+    # Telegram links have different structure
+    if protocol == "telegram":
+        return link.startswith("tg://proxy") and "server=" in link and "secret=" in link
+    if len(link) < 50:
         return False
     if "@" not in link or "#" not in link:
         return False
@@ -731,9 +738,12 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
     cmd = ["bash", str(USER_ADD_SCRIPT), "--batch", str(count), "--prefix", prefix]
     script_timeout = max(120, count * 60)
 
+    # Pass DONATE_ONLY_PROTOCOLS to skip WireGuard/AmneziaWG/etc.
+    env = {**os.environ, "DONATE_ONLY_PROTOCOLS": " ".join(protocols)}
+
     try:
         result = subprocess.run(
-            cmd, cwd=str(PROJECT_DIR),
+            cmd, cwd=str(PROJECT_DIR), env=env,
             capture_output=True, text=True, timeout=script_timeout,
         )
     except subprocess.TimeoutExpired:
@@ -771,12 +781,13 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
                 errors.append(f"{username}: {protocol} link failed validation")
                 continue
 
-            # POST to MahsaNet
+            # POST to MahsaNet — telegram goes to "telegram" pool
+            config_pool = "telegram" if protocol == "telegram" else MAHSANET_POOL
             try:
                 resp = await mahsanet_api_call("POST", "", {
                     "url": link,
                     "ads_url": link,
-                    "pool": MAHSANET_POOL,
+                    "pool": config_pool,
                     "use_mux": False,
                     "use_fragment": False,
                 })

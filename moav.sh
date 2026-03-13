@@ -3103,6 +3103,14 @@ mahsanet_validate_link() {
         return 1
     fi
 
+    # Telegram links have different structure
+    if [[ "$protocol" == "telegram" ]]; then
+        [[ "$link" == tg://proxy* ]] || return 1
+        [[ "$link" == *"server="* ]] || return 1
+        [[ "$link" == *"secret="* ]] || return 1
+        return 0
+    fi
+
     # Check length
     if [[ ${#link} -lt 50 ]]; then
         return 1
@@ -3140,6 +3148,7 @@ mahsanet_protocol_to_file() {
         trojan)    echo "trojan.txt" ;;
         cdn)       echo "cdn-vless.txt" ;;
         xhttp)     echo "xhttp-vless.txt" ;;
+        telegram)  echo "telegram-proxy-link.txt" ;;
         *)         echo "" ;;
     esac
 }
@@ -3446,9 +3455,10 @@ cmd_donate_mahsanet_donate() {
         return 0
     fi
 
-    # Generate users
+    # Generate users (with DONATE_ONLY_PROTOCOLS to skip WireGuard/AmneziaWG/etc.)
     echo ""
-    info "Generating $user_count donation user(s)..."
+    info "Generating $user_count donation user(s) (lightweight — only donated protocols)..."
+    export DONATE_ONLY_PROTOCOLS="$protocols"
     local add_output
     if [[ "$user_count" -eq 1 ]]; then
         # Single user mode - use prefix as the username directly
@@ -3466,6 +3476,7 @@ cmd_donate_mahsanet_donate() {
             return 1
         fi
     fi
+    unset DONATE_ONLY_PROTOCOLS
 
     # Find the generated user directories
     local generated_users=()
@@ -3525,13 +3536,19 @@ cmd_donate_mahsanet_donate() {
                 continue
             fi
 
-            echo -e "  ${WHITE}→${NC} $username/$protocol: submitting..."
+            # Telegram configs go to the "telegram" pool, others use configured pool
+            local config_pool="$pool"
+            if [[ "$protocol" == "telegram" ]]; then
+                config_pool="telegram"
+            fi
+
+            echo -e "  ${WHITE}→${NC} $username/$protocol: submitting to '$config_pool' pool..."
 
             # POST to MahsaNet API
             local json_data
             json_data=$(jq -n \
                 --arg url "$link" \
-                --arg pool "$pool" \
+                --arg pool "$config_pool" \
                 '{"url": $url, "ads_url": $url, "pool": $pool, "use_mux": false, "use_fragment": false}')
 
             local response

@@ -448,7 +448,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_IP_WHITELIST=${ADMIN_IP_WHITELIST:-}
       - MAHSANET_API_KEY=${MAHSANET_API_KEY:-}
-      - MAHSANET_PROTOCOLS=${MAHSANET_PROTOCOLS:-reality hysteria2}
+      - MAHSANET_PROTOCOLS=${MAHSANET_PROTOCOLS:-reality hysteria2 telegram}
       - MAHSANET_POOL=${MAHSANET_POOL:-mahsa}
       - TZ=${TZ:-UTC}
     profiles:
