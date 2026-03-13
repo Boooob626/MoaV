@@ -3083,7 +3083,7 @@ cmd_admin() {
             echo ""
 
             # Restart admin container if running
-            if docker compose ps --status running 2>/dev/null | grep -q "admin"; then
+            if docker ps --filter "name=moav-admin" --filter "status=running" -q 2>/dev/null | grep -q .; then
                 info "Restarting admin container to apply new password..."
                 docker compose --profile admin restart admin
                 success "Admin container restarted with new password"
