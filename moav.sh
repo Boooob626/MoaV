@@ -3210,10 +3210,10 @@ cmd_donate_mahsanet_setup() {
     fi
     success "API key saved to .env"
 
-    # Restart admin if running to pick up new key
+    # Recreate admin if running to pick up new key (restart won't read .env changes)
     if docker ps --filter "name=moav-admin" --filter "status=running" -q 2>/dev/null | grep -q .; then
-        info "Restarting admin container to pick up API key..."
-        docker compose --profile admin restart admin 2>/dev/null || true
+        info "Recreating admin container to pick up API key..."
+        docker compose --profile admin up -d admin 2>/dev/null || true
     fi
 }
 
@@ -3620,11 +3620,11 @@ cmd_admin() {
             echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
             echo ""
 
-            # Restart admin container if running
+            # Recreate admin container if running (restart won't pick up .env changes)
             if docker ps --filter "name=moav-admin" --filter "status=running" -q 2>/dev/null | grep -q .; then
-                info "Restarting admin container to apply new password..."
-                docker compose --profile admin restart admin
-                success "Admin container restarted with new password"
+                info "Recreating admin container to apply new password..."
+                docker compose --profile admin up -d admin
+                success "Admin container recreated with new password"
             else
                 info "Admin container is not running. New password will take effect on next start."
             fi
