@@ -4418,53 +4418,69 @@ cmd_build() {
         docker compose --profile all build $no_cache $remaining_services
         success "All services built!"
     else
-        # Check if argument is a profile name (resolve aliases first)
-        local resolved_build_arg
-        resolved_build_arg=$(resolve_profile "${services_args[0]}")
+        # Resolve all arguments: each can be a profile name or a service name
         local profiles="proxy wireguard amneziawg dnstunnel trusttunnel admin conduit snowflake monitoring"
-        local profile_match=""
-        for p in $profiles; do
-            if [[ "$resolved_build_arg" == "$p" ]]; then
-                profile_match="$p"
-                break
+        local matched_profiles=()
+        local remaining_args=()
+
+        for arg in "${services_args[@]}"; do
+            local resolved_arg
+            resolved_arg=$(resolve_profile "$arg")
+            local is_profile=""
+            for p in $profiles; do
+                if [[ "$resolved_arg" == "$p" ]]; then
+                    matched_profiles+=("$p")
+                    is_profile="true"
+                    break
+                fi
+            done
+            if [[ -z "$is_profile" ]]; then
+                remaining_args+=("$arg")
             fi
         done
 
-        if [[ -n "$profile_match" ]]; then
-            # Build all services in the profile
-            info "Building $profile_match profile${no_cache:+ (no cache)}..."
-            docker compose --profile "$profile_match" build $no_cache
-            success "Profile $profile_match built!"
-        else
+        # Build matched profiles
+        for profile in "${matched_profiles[@]}"; do
+            info "Building $profile profile${no_cache:+ (no cache)}..."
+            docker compose --profile "$profile" build $no_cache
+            success "Profile $profile built!"
+        done
+
+        # Build remaining services (non-profile args)
+        if [[ ${#remaining_args[@]} -gt 0 ]]; then
             local services
-            services=$(resolve_services "${services_args[@]}")
+            services=$(resolve_services "${remaining_args[@]}")
             # Remove empty values and trim whitespace
             services=$(echo "$services" | xargs)
-            if [[ -z "$services" ]]; then
-                info "No buildable services specified"
-                return 0
-            fi
-            # Check if any services are image-only (need --local build)
-            local compose_services=()
-            local local_services=()
-            for svc in $services; do
-                if [[ -n "${LOCAL_BUILD_MAP[$svc]:-}" ]]; then
-                    local_services+=("$svc")
-                else
-                    compose_services+=("$svc")
+            if [[ -n "$services" ]]; then
+                # Check if any services are image-only (need --local build)
+                local compose_services=()
+                local local_services=()
+                for svc in $services; do
+                    if [[ -n "${LOCAL_BUILD_MAP[$svc]:-}" ]]; then
+                        local_services+=("$svc")
+                    else
+                        compose_services+=("$svc")
+                    fi
+                done
+                # Build compose services normally
+                if [[ ${#compose_services[@]} -gt 0 ]]; then
+                    info "Building: ${compose_services[*]}${no_cache:+ (no cache)}"
+                    docker compose --profile all build $no_cache ${compose_services[@]}
+                    success "Build complete!"
                 fi
-            done
-            # Build compose services normally
-            if [[ ${#compose_services[@]} -gt 0 ]]; then
-                info "Building: ${compose_services[*]}${no_cache:+ (no cache)}"
-                docker compose --profile all build $no_cache ${compose_services[@]}
-                success "Build complete!"
+                # Auto-redirect image-only services to local build
+                if [[ ${#local_services[@]} -gt 0 ]]; then
+                    info "Building locally: ${local_services[*]} (image-only services)"
+                    build_local_images "$no_cache" "${local_services[@]}"
+                fi
             fi
-            # Auto-redirect image-only services to local build
-            if [[ ${#local_services[@]} -gt 0 ]]; then
-                info "Building locally: ${local_services[*]} (image-only services)"
-                build_local_images "$no_cache" "${local_services[@]}"
-            fi
+        fi
+
+        # Nothing matched at all
+        if [[ ${#matched_profiles[@]} -eq 0 && ${#remaining_args[@]} -eq 0 ]]; then
+            info "No buildable services specified"
+            return 0
         fi
     fi
 }
