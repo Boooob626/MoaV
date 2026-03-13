@@ -3388,7 +3388,7 @@ cmd_donate_mahsanet() {
         echo ""
         echo "Configuration (.env):"
         echo "  MAHSANET_API_KEY         API key from mahsaserver.com/user/api"
-        echo "  MAHSANET_PROTOCOLS       Protocols to donate (default: reality hysteria2 telegram)"
+        echo "  MAHSANET_PROTOCOLS       Protocols to donate (default: reality hysteria2)"
         echo "  MAHSANET_POOL            Pool name (default: mahsa)"
         echo ""
         echo "Examples:"

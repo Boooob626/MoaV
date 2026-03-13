@@ -615,7 +615,7 @@ async def download_bundle(username: str, _: str = Depends(verify_auth)):
 
 MAHSANET_API_URL = "https://www.mahsaserver.com/backend/api/v1/config/"
 MAHSANET_API_KEY = os.environ.get("MAHSANET_API_KEY", "")
-MAHSANET_PROTOCOLS = os.environ.get("MAHSANET_PROTOCOLS", "reality hysteria2 telegram").split()
+MAHSANET_PROTOCOLS = os.environ.get("MAHSANET_PROTOCOLS", "reality hysteria2").split()
 MAHSANET_POOL = os.environ.get("MAHSANET_POOL", "mahsa")
 
 PROTOCOL_FILE_MAP = {
