@@ -824,7 +824,8 @@
             const el = document.getElementById('donate-result');
             el.className = 'create-result ' + cls;
             el.innerHTML = '<button class="result-dismiss" onclick="document.getElementById(\'donate-result\').style.display=\'none\'">&times;</button>';
-            const s = document.createElement('span');
+            const s = document.createElement('pre');
+            s.style.cssText = 'margin:0;white-space:pre-wrap;font-family:var(--mono);font-size:0.7rem;';
             s.textContent = text;
             el.appendChild(s);
             el.style.display = 'block';
@@ -855,8 +856,8 @@
                 const data = await resp.json();
                 if (data.success) {
                     let msg = `Donated ${data.donated} config(s) for ${data.users.length} user(s)`;
-                    if (data.errors.length) msg += `\nWarnings: ${data.errors.join('\n')}`;
-                    showDonateResult('success', msg);
+                    if (data.errors && data.errors.length) msg += `\n\nWarnings:\n${data.errors.join('\n')}`;
+                    showDonateResult(data.errors && data.errors.length ? 'error' : 'success', msg);
                     loadMahsanetConfigs();
                 } else {
                     showDonateResult('error', data.detail || data.errors?.join('\n') || 'Failed');

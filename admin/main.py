@@ -811,6 +811,8 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
         "donated": len(donated),
         "donated_configs": donated,
         "errors": errors,
+        "script_output": result.stdout[-2000:] if result.stdout else "",
+        "script_errors": result.stderr[-2000:] if result.stderr else "",
     }
 
 
