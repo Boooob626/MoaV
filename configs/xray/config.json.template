@@ -59,6 +59,11 @@
         "inboundTag": ["api-in"],
         "outboundTag": "api",
         "type": "field"
+      },
+      {
+        "outboundTag": "direct",
+        "type": "field",
+        "network": "tcp,udp"
       }
     ]
   },
