@@ -430,7 +430,7 @@ services:
   # ADMIN: Stats dashboard + User management API
   # ===========================================================================
   docker-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: tecnativa/docker-socket-proxy:v0.4.2
     container_name: moav-docker-proxy
     restart: unless-stopped
     networks:
@@ -461,6 +461,7 @@ services:
       - .:/project:ro                              # Scripts and assets (read-only)
       - ./outputs:/project/outputs                 # User bundles (read-write for user-add.sh)
       - ./configs:/project/configs                 # Config updates (read-write for peer addition)
+      - ./state:/project/state                     # Credential sync (read-write for user-add.sh)
       - moav_state:/state:ro                       # Dashboard reads keys from Docker volume
       - moav_certs:/certs:ro                       # SSL certificates
     environment:
