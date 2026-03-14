@@ -2009,7 +2009,7 @@ select_profiles() {
             dnstunnel_enabled=false
         fi
         [[ "$enable_trusttunnel" != "true" ]] && trusttunnel_enabled=false
-        [[ "$enable_xhttp" != "true" ]] && xhttp_enabled=false
+        [[ "$enable_xhttp" == "true" ]] && xhttp_enabled=true
         [[ "$enable_telemt" != "true" ]] && telegram_enabled=false
         [[ "$enable_admin" != "true" ]] && admin_enabled=false
     fi
@@ -5500,23 +5500,23 @@ cmd_regenerate_users() {
     cdn_address="${cdn_address:-${cdn_domain}}"
 
     # Load ENABLE_* settings from .env
-    local enable_reality=$(grep -E '^ENABLE_REALITY=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_trojan=$(grep -E '^ENABLE_TROJAN=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_hysteria2=$(grep -E '^ENABLE_HYSTERIA2=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_wireguard=$(grep -E '^ENABLE_WIREGUARD=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_amneziawg=$(grep -E '^ENABLE_AMNEZIAWG=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_dnstt=$(grep -E '^ENABLE_DNSTT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_slipstream=$(grep -E '^ENABLE_SLIPSTREAM=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local slipstream_subdomain=$(grep -E '^SLIPSTREAM_SUBDOMAIN=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_trusttunnel=$(grep -E '^ENABLE_TRUSTTUNNEL=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_xhttp=$(grep -E '^ENABLE_XHTTP=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local port_xhttp=$(grep -E '^PORT_XHTTP=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local xhttp_reality_target=$(grep -E '^XHTTP_REALITY_TARGET=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local enable_telemt=$(grep -E '^ENABLE_TELEMT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local telemt_tls_domain=$(grep -E '^TELEMT_TLS_DOMAIN=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local telemt_max_tcp_conns=$(grep -E '^TELEMT_MAX_TCP_CONNS=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local telemt_max_unique_ips=$(grep -E '^TELEMT_MAX_UNIQUE_IPS=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
-    local port_telemt=$(grep -E '^PORT_TELEMT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"')
+    local enable_reality=$(get_env_val "ENABLE_REALITY" .env "true")
+    local enable_trojan=$(get_env_val "ENABLE_TROJAN" .env "true")
+    local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" .env "true")
+    local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" .env "true")
+    local enable_amneziawg=$(get_env_val "ENABLE_AMNEZIAWG" .env "true")
+    local enable_dnstt=$(get_env_val "ENABLE_DNSTT" .env "true")
+    local enable_slipstream=$(get_env_val "ENABLE_SLIPSTREAM" .env "false")
+    local slipstream_subdomain=$(get_env_val "SLIPSTREAM_SUBDOMAIN" .env "s")
+    local enable_trusttunnel=$(get_env_val "ENABLE_TRUSTTUNNEL" .env "true")
+    local enable_xhttp=$(get_env_val "ENABLE_XHTTP" .env "false")
+    local port_xhttp=$(get_env_val "PORT_XHTTP" .env "2096")
+    local xhttp_reality_target=$(get_env_val "XHTTP_REALITY_TARGET" .env "dl.google.com:443")
+    local enable_telemt=$(get_env_val "ENABLE_TELEMT" .env "true")
+    local telemt_tls_domain=$(get_env_val "TELEMT_TLS_DOMAIN" .env "dl.google.com")
+    local telemt_max_tcp_conns=$(get_env_val "TELEMT_MAX_TCP_CONNS" .env "100")
+    local telemt_max_unique_ips=$(get_env_val "TELEMT_MAX_UNIQUE_IPS" .env "10")
+    local port_telemt=$(get_env_val "PORT_TELEMT" .env "993")
 
     # Run the regeneration using bootstrap container
     # This mounts all necessary volumes and has the generate scripts
