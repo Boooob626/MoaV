@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Strategy guide for censored regions (prefer domestic, high-traffic domains)
   - Example targets for Iran (blubank.com, divar.ir, snapp.ir)
 - **XHTTP in client Docker image** — Xray-core binary added to `Dockerfile.client` for XHTTP test/connect
+- **Xray Grafana monitoring dashboard** — Per-user connection metrics for XHTTP via log-based exporter
+  - Total Connections, Active Users, Total Users stat panels
+  - Connections & Users over time, Connection Rate time series
+  - Per-user connections breakdown and User Details table
+  - New `xray-exporter` service (Prometheus metrics on port 9103)
 
 ### Fixed
 - **XHTTP menu showing "disabled" despite `.env` being correct** — Logic bug in `moav.sh`: `xhttp_enabled` was initialized to `false` and the condition could never set it to `true`
@@ -35,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bootstrap logging wrong message when Reality keys exist** — Incorrectly reported generating new keys when reusing existing ones
 - **Regenerate block using raw `grep | cut`** — Replaced with `get_env_val` calls for consistent `.env` parsing
 - **MahsaNet donate list column alignment** — Fixed URL truncation overflow and misaligned `Used` column
+- **XHTTP share link naming** — Changed from `#username-xhttp` to `#MoaV-XHTTP-username` to match other protocols' naming convention
 
 ### Changed
 - **XHTTP enabled by default** — `ENABLE_XHTTP=true` in `.env.example` (was opt-in `false`)
