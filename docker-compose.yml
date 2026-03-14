@@ -653,6 +653,25 @@ services:
       - monitoring
       - all
 
+  # Xray User Exporter - parses Xray logs for XHTTP user connection metrics
+  xray-exporter:
+    build:
+      context: ./exporters/xray
+      dockerfile: Dockerfile
+    container_name: moav-xray-exporter
+    restart: unless-stopped
+    networks:
+      - moav_net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TZ=${TZ:-UTC}
+    expose:
+      - "9103"
+    profiles:
+      - monitoring
+      - all
+
   # WireGuard Exporter - custom exporter using docker exec
   wireguard-exporter:
     build:
