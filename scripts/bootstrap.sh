@@ -338,7 +338,6 @@ fi
 # -----------------------------------------------------------------------------
 # Generate dnstt server config (before creating users)
 # -----------------------------------------------------------------------------
-log_info "ENABLE_DNSTT=${ENABLE_DNSTT:-true}"
 if [[ "${ENABLE_DNSTT:-true}" == "true" ]]; then
     log_info "Generating dnstt server configuration..."
     if generate_dnstt_config; then
@@ -359,7 +358,6 @@ fi
 # -----------------------------------------------------------------------------
 # Generate Slipstream config (before creating users)
 # -----------------------------------------------------------------------------
-log_info "ENABLE_SLIPSTREAM=${ENABLE_SLIPSTREAM:-false}"
 if [[ "${ENABLE_SLIPSTREAM:-false}" == "true" ]]; then
     log_info "Generating Slipstream configuration..."
     if generate_slipstream_config; then
@@ -586,7 +584,7 @@ VLESS_WS_USERS_JSON+="]"
 # Generate TrustTunnel config (if enabled)
 # -----------------------------------------------------------------------------
 if [[ "${ENABLE_TRUSTTUNNEL:-true}" == "true" ]]; then
-    log_info "Generating TrustTunnel configuration..."
+    log_info "Generating TrustTunnel configuration (credentials from user list)..."
 
     export TRUSTTUNNEL_CREDENTIALS
 
@@ -606,7 +604,7 @@ fi
 # Generate Xray config (if enabled)
 # -----------------------------------------------------------------------------
 if [[ "${ENABLE_XHTTP:-false}" == "true" ]]; then
-    log_info "Generating Xray-core (XHTTP) configuration..."
+    log_info "Generating Xray-core (XHTTP) configuration (reusing Reality keys from sing-box)..."
 
     export XRAY_USERS_JSON
     export PORT_XHTTP
@@ -641,7 +639,7 @@ singbox_needed=false
 [[ "${ENABLE_HYSTERIA2:-true}" == "true" ]] && singbox_needed=true
 
 if [[ "$singbox_needed" == "true" ]]; then
-    log_info "Generating sing-box configuration..."
+    log_info "Generating sing-box configuration (using existing keys)..."
 
     export REALITY_USERS_JSON
     export TROJAN_USERS_JSON
