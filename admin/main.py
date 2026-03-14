@@ -508,6 +508,22 @@ def get_bundle_path():
     return BUNDLE_PATHS[0]  # Default
 
 
+def _get_donated_users() -> set:
+    """Get set of usernames that have been donated to MahsaNet."""
+    donated = set()
+    for donations_path in [Path("/project/outputs/mahsanet-donations.json"), Path("outputs/mahsanet-donations.json")]:
+        if donations_path.exists():
+            try:
+                data = json.loads(donations_path.read_text())
+                for c in data.get("configs", []):
+                    if c.get("user"):
+                        donated.add(c["user"])
+            except Exception:
+                pass
+            break
+    return donated
+
+
 def list_users():
     """List all users from bundles directory"""
     users = []
@@ -515,6 +531,8 @@ def list_users():
 
     if not bundle_path.exists():
         return users
+
+    donated_users = _get_donated_users()
 
     for user_dir in bundle_path.iterdir():
         # Skip non-directories and zip files
@@ -556,6 +574,7 @@ def list_users():
             "has_telemt": has_telemt,
             "has_dnstt": has_dnstt,
             "has_slipstream": has_slipstream,
+            "is_donated": username in donated_users,
             "zip_exists": zip_exists,
             "created_at": created_at,
         })
@@ -823,6 +842,25 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
                     errors.append(f"{username}/{protocol}: HTTP {resp.status_code} - {err_detail}")
             except Exception as e:
                 errors.append(f"{username}/{protocol}: {str(e)}")
+
+    # Save donations to tracking file
+    if donated:
+        donations_path = Path("/project/outputs/mahsanet-donations.json")
+        try:
+            existing = {"configs": []}
+            if donations_path.exists():
+                existing = json.loads(donations_path.read_text())
+            for d in donated:
+                existing["configs"].append({
+                    "id": d["id"],
+                    "user": d["user"],
+                    "protocol": d["protocol"],
+                    "donated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                })
+            donations_path.parent.mkdir(parents=True, exist_ok=True)
+            donations_path.write_text(json.dumps(existing, indent=2))
+        except Exception:
+            pass  # Non-critical
 
     return {
         "success": len(donated) > 0,

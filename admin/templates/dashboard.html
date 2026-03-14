@@ -277,6 +277,11 @@
             margin-right: 0.2rem;
             margin-bottom: 0.15rem;
         }
+        .tag-donated {
+            background: var(--blue-dim);
+            border-color: var(--blue);
+            color: var(--blue);
+        }
         .dl-link {
             font-family: var(--mono);
             font-size: 0.75rem;
@@ -719,6 +724,7 @@
                             {% if user.has_telemt %}<span class="tag">MTProxy</span>{% endif %}
                             {% if user.has_dnstt %}<span class="tag">dnstt</span>{% endif %}
                             {% if user.has_slipstream %}<span class="tag">Slip</span>{% endif %}
+                            {% if user.is_donated %}<span class="tag tag-donated">donated</span>{% endif %}
                         </td>
                         <td style="text-align:right;">
                             <a href="/download/{{ user.username }}" class="dl-link">.zip</a>
