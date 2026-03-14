@@ -190,7 +190,6 @@ if [[ -n "$DONATE_ONLY" ]]; then
     export ENABLE_DNSTT=false
     export ENABLE_SLIPSTREAM=false
     export ENABLE_TRUSTTUNNEL=false
-    export ENABLE_XHTTP=false
     # Enable specific protocols only if in the donate list
     if echo " $DONATE_ONLY " | grep -q " reality "; then
         export ENABLE_REALITY=true
@@ -211,6 +210,11 @@ if [[ -n "$DONATE_ONLY" ]]; then
         export ENABLE_TELEMT=true
     else
         export ENABLE_TELEMT=false
+    fi
+    if echo " $DONATE_ONLY " | grep -q " xhttp "; then
+        export ENABLE_XHTTP=true
+    else
+        export ENABLE_XHTTP=false
     fi
     # CDN is controlled by CDN_DOMAIN — clear it if cdn not in donate list
     if ! echo " $DONATE_ONLY " | grep -q " cdn "; then

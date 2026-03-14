@@ -133,6 +133,7 @@ if [[ -n "$DONATE_ONLY" ]]; then
     echo " $DONATE_ONLY " | grep -q " trojan "    && ENABLE_TROJAN=true    || ENABLE_TROJAN=false
     echo " $DONATE_ONLY " | grep -q " hysteria2 " && ENABLE_HYSTERIA2=true || ENABLE_HYSTERIA2=false
     echo " $DONATE_ONLY " | grep -q " telegram "  && ENABLE_TELEMT=true    || ENABLE_TELEMT=false
+    echo " $DONATE_ONLY " | grep -q " xhttp "     && ENABLE_XHTTP=true    || ENABLE_XHTTP=false
     # CDN: clear CDN_DOMAIN if not in donate list
     if ! echo " $DONATE_ONLY " | grep -q " cdn "; then
         CDN_SUBDOMAIN=""
