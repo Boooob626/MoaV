@@ -3576,7 +3576,7 @@ cmd_donate_mahsanet_donate() {
             json_data=$(jq -n \
                 --arg url "$link" \
                 --arg pool "$config_pool" \
-                '{"url": $url, "ads_url": $url, "pool": $pool, "use_mux": false, "use_fragment": false}')
+                '{"url": $url, "ads_url": "https://t.me/VahidOnline", "pool": $pool, "use_mux": false, "use_fragment": false}')
 
             local response
             response=$(mahsanet_api_call "POST" "" "$json_data" "$api_key")

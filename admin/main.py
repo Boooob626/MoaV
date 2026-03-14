@@ -760,20 +760,27 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
     errors = []
     generated_users = []
 
-    # Extract usernames from script output
-    for match in re.finditer(r"User '([^']+)' created", result.stdout or ""):
+    # Extract usernames from script output: "[INFO] ✓ User 'xxx' created successfully"
+    script_output = result.stdout or ""
+    seen = set()
+    for match in re.finditer(r"User '([^']+)' created", script_output):
         uname = match.group(1)
-        if (bundle_path / uname).exists():
+        if uname not in seen and (bundle_path / uname).exists():
+            seen.add(uname)
             generated_users.append(uname)
 
-    # Fallback: guess names if parsing failed (first run starts at 01)
+    # Fallback: find the LAST N dirs matching prefix (sorted by mtime, newest first)
     if not generated_users:
-        for i in range(1, 100):
-            username = f"{prefix}{i:02d}"
-            if (bundle_path / username).exists():
-                generated_users.append(username)
-            if len(generated_users) >= count:
-                break
+        import time
+        now = time.time()
+        candidates = []
+        for d in bundle_path.iterdir():
+            if d.is_dir() and d.name.startswith(prefix):
+                candidates.append((d.stat().st_mtime, d.name))
+        # Sort by mtime descending (newest first), take only the count we need
+        candidates.sort(reverse=True)
+        for _, uname in candidates[:count]:
+            generated_users.append(uname)
 
     for username in generated_users:
         user_dir = bundle_path / username
@@ -799,7 +806,7 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
             try:
                 resp = await mahsanet_api_call("POST", "", {
                     "url": link,
-                    "ads_url": link,
+                    "ads_url": "https://t.me/VahidOnline",
                     "pool": config_pool,
                     "use_mux": False,
                     "use_fragment": False,

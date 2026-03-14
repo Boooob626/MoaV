@@ -661,7 +661,7 @@
                         </tr>
                     </thead>
                     <tbody id="mahsa-configs-body">
-                        <tr><td colspan="5" style="color:var(--text-dim);font-size:0.75rem;">Loading...</td></tr>
+                        <tr><td colspan="5" style="color:var(--text-dim);font-size:0.75rem;">Click <b>Refresh</b> to fetch donated configs from MahsaNet</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -855,7 +855,7 @@
                 });
                 const data = await resp.json();
                 if (data.success) {
-                    let msg = `Donated ${data.donated} config(s) for ${data.users.length} user(s)`;
+                    let msg = `Donated ${data.donated} config(s) for: ${(data.users||[]).join(', ')}`;
                     if (data.errors && data.errors.length) msg += `\n\nWarnings:\n${data.errors.join('\n')}`;
                     showDonateResult(data.errors && data.errors.length ? 'error' : 'success', msg);
                     loadMahsanetConfigs();
