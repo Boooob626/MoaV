@@ -44,36 +44,63 @@ EOF
 
 log_info "Created credentials for $USER_ID"
 
-# Add to sing-box config
+# DONATE_ONLY_PROTOCOLS: space-separated list of protocols to provision
+# When set, only add user to services needed for those protocols (skip WireGuard, AmneziaWG, etc.)
+DONATE_ONLY="${DONATE_ONLY_PROTOCOLS:-}"
+
+# Helper: check if a protocol is in the donate-only list (or if donate mode is off)
+donate_needs() {
+    local service="$1"
+    # If not in donate mode, always include
+    [[ -z "$DONATE_ONLY" ]] && return 0
+    # Check if any of the given protocols are in the list
+    shift
+    for proto in "$@"; do
+        if echo " $DONATE_ONLY " | grep -q " $proto "; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Add to sing-box config (Reality, Trojan, Hysteria2, CDN — all sing-box inbounds)
 CONFIG_FILE="/configs/sing-box/config.json"
 
-if [[ -f "$CONFIG_FILE" ]]; then
+if [[ -f "$CONFIG_FILE" ]] && donate_needs singbox reality trojan hysteria2 cdn; then
     # Add to Reality inbound
-    jq --arg name "$USER_ID" --arg uuid "$USER_UUID" \
-        '(.inbounds[] | select(.tag == "vless-reality-in") | .users) += [{"name": $name, "uuid": $uuid, "flow": "xtls-rprx-vision"}]' \
-        "$CONFIG_FILE" > /tmp/config.tmp && mv -f /tmp/config.tmp "$CONFIG_FILE"
+    if donate_needs reality reality; then
+        jq --arg name "$USER_ID" --arg uuid "$USER_UUID" \
+            '(.inbounds[] | select(.tag == "vless-reality-in") | .users) += [{"name": $name, "uuid": $uuid, "flow": "xtls-rprx-vision"}]' \
+            "$CONFIG_FILE" > /tmp/config.tmp && mv -f /tmp/config.tmp "$CONFIG_FILE"
+    fi
 
     # Add to Trojan inbound
-    jq --arg name "$USER_ID" --arg password "$USER_PASSWORD" \
-        '(.inbounds[] | select(.tag == "trojan-tls-in") | .users) += [{"name": $name, "password": $password}]' \
-        "$CONFIG_FILE" > /tmp/config.tmp && mv -f /tmp/config.tmp "$CONFIG_FILE"
+    if donate_needs trojan trojan; then
+        jq --arg name "$USER_ID" --arg password "$USER_PASSWORD" \
+            '(.inbounds[] | select(.tag == "trojan-tls-in") | .users) += [{"name": $name, "password": $password}]' \
+            "$CONFIG_FILE" > /tmp/config.tmp && mv -f /tmp/config.tmp "$CONFIG_FILE"
+    fi
 
     # Add to Hysteria2 inbound
-    jq --arg name "$USER_ID" --arg password "$USER_PASSWORD" \
-        '(.inbounds[] | select(.tag == "hysteria2-in") | .users) += [{"name": $name, "password": $password}]' \
-        "$CONFIG_FILE" > /tmp/config.tmp && mv -f /tmp/config.tmp "$CONFIG_FILE"
+    if donate_needs hysteria2 hysteria2; then
+        jq --arg name "$USER_ID" --arg password "$USER_PASSWORD" \
+            '(.inbounds[] | select(.tag == "hysteria2-in") | .users) += [{"name": $name, "password": $password}]' \
+            "$CONFIG_FILE" > /tmp/config.tmp && mv -f /tmp/config.tmp "$CONFIG_FILE"
+    fi
 
     # Add to VLESS WS inbound (CDN)
-    jq --arg name "$USER_ID" --arg uuid "$USER_UUID" \
-        '(.inbounds[] | select(.tag == "vless-ws-in") | .users) += [{"name": $name, "uuid": $uuid}]' \
-        "$CONFIG_FILE" > /tmp/config.tmp && mv -f /tmp/config.tmp "$CONFIG_FILE"
+    if donate_needs cdn cdn; then
+        jq --arg name "$USER_ID" --arg uuid "$USER_UUID" \
+            '(.inbounds[] | select(.tag == "vless-ws-in") | .users) += [{"name": $name, "uuid": $uuid}]' \
+            "$CONFIG_FILE" > /tmp/config.tmp && mv -f /tmp/config.tmp "$CONFIG_FILE"
+    fi
 
     log_info "Added $USER_ID to sing-box config"
 fi
 
-# Add to TrustTunnel config
+# Add to TrustTunnel config (skip in donate mode — not donatable)
 TRUSTTUNNEL_CREDS="/configs/trusttunnel/credentials.toml"
-if [[ -f "$TRUSTTUNNEL_CREDS" ]]; then
+if [[ -f "$TRUSTTUNNEL_CREDS" ]] && donate_needs trusttunnel; then
     # Check if user already exists
     if grep -q "username = \"$USER_ID\"" "$TRUSTTUNNEL_CREDS" 2>/dev/null; then
         log_info "User $USER_ID already exists in TrustTunnel"
@@ -89,9 +116,9 @@ EOF
     fi
 fi
 
-# Add to AmneziaWG config
+# Add to AmneziaWG config (skip in donate mode — not donatable)
 AWG_CONFIG="/configs/amneziawg/awg0.conf"
-if [[ -f "$AWG_CONFIG" ]]; then
+if [[ -f "$AWG_CONFIG" ]] && donate_needs amneziawg; then
     # Check if user already exists
     if grep -q "# $USER_ID" "$AWG_CONFIG" 2>/dev/null; then
         log_info "User $USER_ID already exists in AmneziaWG"
@@ -128,25 +155,60 @@ fi
 
 # Add to telemt config
 TELEMT_CONFIG="/configs/telemt/config.toml"
-if [[ "${ENABLE_TELEMT:-true}" == "true" ]] && [[ -f "$TELEMT_CONFIG" ]]; then
+if [[ "${ENABLE_TELEMT:-true}" == "true" ]] && [[ -f "$TELEMT_CONFIG" ]] && donate_needs telemt telegram; then
     telemt_generate_secret "$USER_ID"
     telemt_add_user_to_config "$USER_ID" "$TELEMT_SECRET"
 fi
 
-# Generate bundle
+# Generate bundle — override ENABLE_* flags in donate mode to only generate needed configs
 export STATE_DIR
 export USER_ID USER_UUID USER_PASSWORD
 export REALITY_PUBLIC_KEY REALITY_SHORT_ID
 export SERVER_IP="${SERVER_IP:-$(curl -s --max-time 5 https://api.ipify.org)}"
 export DOMAIN="${DOMAIN:-}"
 export REALITY_TARGET="${REALITY_TARGET:-dl.google.com:443}"
-export ENABLE_WIREGUARD="${ENABLE_WIREGUARD:-true}"
-export ENABLE_AMNEZIAWG="${ENABLE_AMNEZIAWG:-true}"
-export ENABLE_DNSTT="${ENABLE_DNSTT:-true}"
-export ENABLE_SLIPSTREAM="${ENABLE_SLIPSTREAM:-false}"
-export ENABLE_HYSTERIA2="${ENABLE_HYSTERIA2:-true}"
-export ENABLE_TRUSTTUNNEL="${ENABLE_TRUSTTUNNEL:-true}"
-export ENABLE_TELEMT="${ENABLE_TELEMT:-true}"
+
+if [[ -n "$DONATE_ONLY" ]]; then
+    # In donate mode, only enable protocols being donated
+    export ENABLE_WIREGUARD=false
+    export ENABLE_AMNEZIAWG=false
+    export ENABLE_DNSTT=false
+    export ENABLE_SLIPSTREAM=false
+    export ENABLE_TRUSTTUNNEL=false
+    # Enable specific protocols only if in the donate list
+    if echo " $DONATE_ONLY " | grep -q " reality "; then
+        export ENABLE_REALITY=true
+    else
+        export ENABLE_REALITY=false
+    fi
+    if echo " $DONATE_ONLY " | grep -q " trojan "; then
+        export ENABLE_TROJAN=true
+    else
+        export ENABLE_TROJAN=false
+    fi
+    if echo " $DONATE_ONLY " | grep -q " hysteria2 "; then
+        export ENABLE_HYSTERIA2=true
+    else
+        export ENABLE_HYSTERIA2=false
+    fi
+    if echo " $DONATE_ONLY " | grep -q " telegram "; then
+        export ENABLE_TELEMT=true
+    else
+        export ENABLE_TELEMT=false
+    fi
+    # CDN is controlled by CDN_DOMAIN — clear it if cdn not in donate list
+    if ! echo " $DONATE_ONLY " | grep -q " cdn "; then
+        export CDN_DOMAIN=""
+    fi
+else
+    export ENABLE_WIREGUARD="${ENABLE_WIREGUARD:-true}"
+    export ENABLE_AMNEZIAWG="${ENABLE_AMNEZIAWG:-true}"
+    export ENABLE_DNSTT="${ENABLE_DNSTT:-true}"
+    export ENABLE_SLIPSTREAM="${ENABLE_SLIPSTREAM:-false}"
+    export ENABLE_HYSTERIA2="${ENABLE_HYSTERIA2:-true}"
+    export ENABLE_TRUSTTUNNEL="${ENABLE_TRUSTTUNNEL:-true}"
+    export ENABLE_TELEMT="${ENABLE_TELEMT:-true}"
+fi
 export PORT_TELEMT="${PORT_TELEMT:-993}"
 export TELEMT_TLS_DOMAIN="${TELEMT_TLS_DOMAIN:-dl.google.com}"
 export TELEMT_MAX_TCP_CONNS="${TELEMT_MAX_TCP_CONNS:-100}"

@@ -1,6 +1,6 @@
 # MoaV
 
-[![Website](https://img.shields.io/badge/website-moav.sh-cyan.svg)](https://moav.sh)  [![Docs](https://img.shields.io/badge/docs-moav.sh%2Fdocs-cyan.svg)](https://moav.sh/docs/)  [![Version](https://img.shields.io/badge/version-1.4.5-blue.svg)](CHANGELOG.md)  [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/website-moav.sh-cyan.svg)](https://moav.sh)  [![Docs](https://img.shields.io/badge/docs-moav.sh%2Fdocs-cyan.svg)](https://moav.sh/docs/)  [![Version](https://img.shields.io/badge/version-1.4.7-blue.svg)](CHANGELOG.md)  [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 English | **[فارسی](README-fa.md)** 
 
@@ -17,7 +17,10 @@ Multi-protocol censorship circumvention stack optimized for hostile network envi
 - **Home server ready** - Run on Raspberry Pi or any ARM64/x64 Linux as a personal VPN
 - **[Psiphon Conduit](https://github.com/Psiphon-Inc/conduit)** - Optional bandwidth donation to help others bypass censorship
 - **[Tor Snowflake](https://snowflake.torproject.org/)** - Optional bandwidth donation to help Tor users bypass censorship
+- **[MahsaNet](https://www.mahsaserver.com/)** - Donate VPN configs to help Mahsa VPN users (2M+ users in Iran)
 - **Monitoring** - Optional Grafana + Prometheus observability stack
+
+> **[Read the full documentation](https://moav.sh/docs/)** — setup guides, CLI reference, client apps, monitoring, OPSEC, and more.
 
 ## Quick Start
 
@@ -67,7 +70,7 @@ docker compose --profile setup run --rm bootstrap  # Initialize
 docker compose --profile all up -d                 # Start all services
 ```
 
-See [docs/SETUP.md](docs/SETUP.md) for complete setup instructions.
+See the [Setup Guide](docs/SETUP.md) for complete instructions, the [CLI Reference](docs/CLI.md) for all commands, or browse the [full documentation](https://moav.sh/docs/).
 
 ### Deploy Your Own
 

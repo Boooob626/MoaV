@@ -390,6 +390,9 @@ async def dashboard(request: Request, username: str = Depends(verify_auth)):
         "update_available": update_info["update_available"],
         "latest_version": update_info["latest_version"],
         "current_version": update_info["current_version"],
+        "mahsanet_configured": bool(MAHSANET_API_KEY),
+        "mahsanet_protocols": MAHSANET_PROTOCOLS,
+        "mahsanet_all_protocols": list(PROTOCOL_FILE_MAP.keys()),
     })
 
 
@@ -505,6 +508,22 @@ def get_bundle_path():
     return BUNDLE_PATHS[0]  # Default
 
 
+def _get_donated_users() -> set:
+    """Get set of usernames that have been donated to MahsaNet."""
+    donated = set()
+    for donations_path in [Path("/project/outputs/mahsanet-donations.json"), Path("outputs/mahsanet-donations.json")]:
+        if donations_path.exists():
+            try:
+                data = json.loads(donations_path.read_text())
+                for c in data.get("configs", []):
+                    if c.get("user"):
+                        donated.add(c["user"])
+            except Exception:
+                pass
+            break
+    return donated
+
+
 def list_users():
     """List all users from bundles directory"""
     users = []
@@ -512,6 +531,8 @@ def list_users():
 
     if not bundle_path.exists():
         return users
+
+    donated_users = _get_donated_users()
 
     for user_dir in bundle_path.iterdir():
         # Skip non-directories and zip files
@@ -553,6 +574,7 @@ def list_users():
             "has_telemt": has_telemt,
             "has_dnstt": has_dnstt,
             "has_slipstream": has_slipstream,
+            "is_donated": username in donated_users,
             "zip_exists": zip_exists,
             "created_at": created_at,
         })
@@ -604,6 +626,266 @@ async def download_bundle(username: str, _: str = Depends(verify_auth)):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={username}.zip"}
     )
+
+
+# =============================================================================
+# MahsaNet Config Donation API
+# =============================================================================
+
+MAHSANET_API_URL = "https://www.mahsaserver.com/backend/api/v1/config/"
+MAHSANET_API_KEY = os.environ.get("MAHSANET_API_KEY", "")
+MAHSANET_PROTOCOLS = os.environ.get("MAHSANET_PROTOCOLS", "reality hysteria2").split()
+MAHSANET_POOL = os.environ.get("MAHSANET_POOL", "mahsa")
+
+PROTOCOL_FILE_MAP = {
+    "reality": "reality.txt",
+    "hysteria2": "hysteria2.txt",
+    "trojan": "trojan.txt",
+    "cdn": "cdn-vless.txt",
+    "xhttp": "xhttp-vless.txt",
+    "telegram": "telegram-proxy-link.txt",
+}
+
+PROTOCOL_PREFIX_MAP = {
+    "reality": "vless://",
+    "hysteria2": "hysteria2://",
+    "trojan": "trojan://",
+    "cdn": "vless://",
+    "xhttp": "vless://",
+    "telegram": "tg://proxy",
+}
+
+
+def validate_share_link(link: str, protocol: str) -> bool:
+    """Validate a share link has correct format."""
+    if not link:
+        return False
+    # Telegram links have different structure
+    if protocol == "telegram":
+        return link.startswith("tg://proxy") and "server=" in link and "secret=" in link
+    if len(link) < 50:
+        return False
+    if "@" not in link or "#" not in link:
+        return False
+    expected_prefix = PROTOCOL_PREFIX_MAP.get(protocol, "")
+    if expected_prefix and not link.startswith(expected_prefix):
+        return False
+    return True
+
+
+async def mahsanet_api_call(method: str, endpoint: str = "", data: dict = None):
+    """Make an API call to MahsaNet."""
+    url = f"{MAHSANET_API_URL}{endpoint}"
+    headers = {
+        "Authorization": f"Token {MAHSANET_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        if method == "GET":
+            resp = await client.get(url, headers=headers)
+        elif method == "POST":
+            resp = await client.post(url, headers=headers, json=data)
+        elif method == "DELETE":
+            resp = await client.delete(url, headers=headers)
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+    return resp
+
+
+@app.get("/api/mahsanet/status")
+async def mahsanet_status(_: str = Depends(verify_auth)):
+    """Get MahsaNet donation status."""
+    if not MAHSANET_API_KEY:
+        return {"configured": False}
+
+    try:
+        resp = await mahsanet_api_call("GET", "?limit=1")
+        if resp.status_code != 200:
+            return {"configured": True, "error": f"API error (HTTP {resp.status_code})"}
+
+        total = resp.json().get("count", 0)
+
+        # Get active count
+        active_resp = await mahsanet_api_call("GET", "?limit=1&is_active=true")
+        active = active_resp.json().get("count", 0) if active_resp.status_code == 200 else 0
+
+        return {
+            "configured": True,
+            "total": total,
+            "active": active,
+            "inactive": total - active,
+        }
+    except Exception as e:
+        return {"configured": True, "error": str(e)}
+
+
+@app.get("/api/mahsanet/configs")
+async def mahsanet_configs(_: str = Depends(verify_auth)):
+    """List donated configs from MahsaNet."""
+    if not MAHSANET_API_KEY:
+        raise HTTPException(status_code=400, detail="MahsaNet API key not configured")
+
+    try:
+        resp = await mahsanet_api_call("GET", "?limit=100")
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail="MahsaNet API error")
+        return resp.json()
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"MahsaNet API unreachable: {e}")
+
+
+@app.post("/api/mahsanet/donate")
+async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
+    """Generate users and donate configs to MahsaNet."""
+    if not MAHSANET_API_KEY:
+        raise HTTPException(status_code=400, detail="MahsaNet API key not configured")
+
+    body = await request.json()
+    count = int(body.get("count", 1))
+    prefix = body.get("prefix", "mahsa").strip()
+    protocols = body.get("protocols", MAHSANET_PROTOCOLS)
+
+    # Validate
+    if count < 1 or count > 50:
+        raise HTTPException(status_code=400, detail="Count must be 1-50")
+    if not re.match(r'^[a-zA-Z0-9_-]+$', prefix):
+        raise HTTPException(status_code=400, detail="Invalid prefix")
+
+    # Generate users via user-add.sh
+    if not USER_ADD_SCRIPT.exists():
+        raise HTTPException(status_code=500, detail="user-add.sh not found")
+
+    cmd = ["bash", str(USER_ADD_SCRIPT), "--batch", str(count), "--prefix", prefix]
+    script_timeout = max(120, count * 60)
+
+    # Pass DONATE_ONLY_PROTOCOLS to skip WireGuard/AmneziaWG/etc.
+    env = {**os.environ, "DONATE_ONLY_PROTOCOLS": " ".join(protocols)}
+
+    try:
+        result = subprocess.run(
+            cmd, cwd=str(PROJECT_DIR), env=env,
+            capture_output=True, text=True, timeout=script_timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail=f"User creation timed out ({script_timeout}s)")
+
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"User creation failed: {result.stderr}")
+
+    # Find generated user directories by parsing script output for created usernames
+    # user-add.sh logs: "✓ User 'mahsa05' created successfully"
+    bundle_path = get_bundle_path()
+    donated = []
+    errors = []
+    generated_users = []
+
+    # Extract usernames from script output: "[INFO] ✓ User 'xxx' created successfully"
+    script_output = result.stdout or ""
+    seen = set()
+    for match in re.finditer(r"User '([^']+)' created", script_output):
+        uname = match.group(1)
+        if uname not in seen and (bundle_path / uname).exists():
+            seen.add(uname)
+            generated_users.append(uname)
+
+    # Fallback: find the LAST N dirs matching prefix (sorted by mtime, newest first)
+    if not generated_users:
+        import time
+        now = time.time()
+        candidates = []
+        for d in bundle_path.iterdir():
+            if d.is_dir() and d.name.startswith(prefix):
+                candidates.append((d.stat().st_mtime, d.name))
+        # Sort by mtime descending (newest first), take only the count we need
+        candidates.sort(reverse=True)
+        for _, uname in candidates[:count]:
+            generated_users.append(uname)
+
+    for username in generated_users:
+        user_dir = bundle_path / username
+
+        for protocol in protocols:
+            link_file = PROTOCOL_FILE_MAP.get(protocol)
+            if not link_file:
+                errors.append(f"{username}: unknown protocol '{protocol}'")
+                continue
+
+            filepath = user_dir / link_file
+            if not filepath.exists():
+                errors.append(f"{username}: {link_file} not found")
+                continue
+
+            link = filepath.read_text().strip().split("\n")[0]
+            if not validate_share_link(link, protocol):
+                errors.append(f"{username}: {protocol} link failed validation")
+                continue
+
+            # POST to MahsaNet — telegram goes to "telegram" pool
+            config_pool = "telegram" if protocol == "telegram" else MAHSANET_POOL
+            try:
+                resp = await mahsanet_api_call("POST", "", {
+                    "url": link,
+                    "ads_url": "https://t.me/VahidOnline",
+                    "pool": config_pool,
+                    "use_mux": False,
+                    "use_fragment": False,
+                })
+                if resp.status_code == 201:
+                    config_data = resp.json()
+                    donated.append({
+                        "user": username,
+                        "protocol": protocol,
+                        "id": config_data.get("hash", config_data.get("id", "unknown")),
+                    })
+                else:
+                    err_detail = resp.text[:200]
+                    errors.append(f"{username}/{protocol}: HTTP {resp.status_code} - {err_detail}")
+            except Exception as e:
+                errors.append(f"{username}/{protocol}: {str(e)}")
+
+    # Save donations to tracking file
+    if donated:
+        donations_path = Path("/project/outputs/mahsanet-donations.json")
+        try:
+            existing = {"configs": []}
+            if donations_path.exists():
+                existing = json.loads(donations_path.read_text())
+            for d in donated:
+                existing["configs"].append({
+                    "id": d["id"],
+                    "user": d["user"],
+                    "protocol": d["protocol"],
+                    "donated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                })
+            donations_path.parent.mkdir(parents=True, exist_ok=True)
+            donations_path.write_text(json.dumps(existing, indent=2))
+        except Exception:
+            pass  # Non-critical
+
+    return {
+        "success": len(donated) > 0,
+        "users": generated_users,
+        "donated": len(donated),
+        "donated_configs": donated,
+        "errors": errors,
+        "script_output": result.stdout[-2000:] if result.stdout else "",
+        "script_errors": result.stderr[-2000:] if result.stderr else "",
+    }
+
+
+@app.delete("/api/mahsanet/configs/{config_id}")
+async def mahsanet_delete_config(config_id: str, _: str = Depends(verify_auth)):
+    """Delete a donated config from MahsaNet."""
+    if not MAHSANET_API_KEY:
+        raise HTTPException(status_code=400, detail="MahsaNet API key not configured")
+
+    try:
+        resp = await mahsanet_api_call("DELETE", f"{config_id}/")
+        if resp.status_code in (200, 204):
+            return {"success": True}
+        raise HTTPException(status_code=resp.status_code, detail="Failed to delete config")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"MahsaNet API unreachable: {e}")
 
 
 def find_certificates(wait_for_letsencrypt=True, max_wait=60):
