@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - "Donated" tag displayed on admin dashboard for donated configs
   - `DONATE_ONLY_PROTOCOLS` generated only when donation is active
   - Telegram proxy included in default donated protocols
-- **`moav reset-password` command** — Reset admin dashboard password from the CLI ([#70](https://github.com/shayanb/MoaV/issues/70))
+- **`moav admin password` command** — Reset admin dashboard password from the CLI ([#70](https://github.com/shayanb/MoaV/issues/70))
 - **MkDocs documentation site** — Project documentation now served via MkDocs with philosophy, protocols, quick-start, and OPSEC pages
 - **MahsaNet documentation** — Setup guide for MahsaNet donation flow in SETUP.md and CLI.md
 

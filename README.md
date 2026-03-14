@@ -20,6 +20,8 @@ Multi-protocol censorship circumvention stack optimized for hostile network envi
 - **[MahsaNet](https://www.mahsaserver.com/)** - Donate VPN configs to help Mahsa VPN users (2M+ users in Iran)
 - **Monitoring** - Optional Grafana + Prometheus observability stack
 
+> **[Read the full documentation](https://moav.sh/docs/)** — setup guides, CLI reference, client apps, monitoring, OPSEC, and more.
+
 ## Quick Start
 
 **One-liner install** (recommended):
@@ -68,7 +70,7 @@ docker compose --profile setup run --rm bootstrap  # Initialize
 docker compose --profile all up -d                 # Start all services
 ```
 
-See [docs/SETUP.md](docs/SETUP.md) for complete setup instructions.
+See the [Setup Guide](docs/SETUP.md) for complete instructions, the [CLI Reference](docs/CLI.md) for all commands, or browse the [full documentation](https://moav.sh/docs/).
 
 ### Deploy Your Own
 
