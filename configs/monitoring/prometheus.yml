@@ -74,3 +74,10 @@ scrape_configs:
     static_configs:
       - targets: ['telemt:9090']
     scrape_timeout: 10s
+
+  # telemt API Exporter - ME pool health, DC stats, upstream quality
+  # NOTE: Only available when running with --profile telegram + monitoring
+  - job_name: 'telemt-api'
+    static_configs:
+      - targets: ['telemt-api-exporter:9104']
+    scrape_timeout: 10s

@@ -275,6 +275,7 @@ services:
       - "${PORT_TELEMT:-993}:993/tcp"
     expose:
       - "9090"
+      - "${TELEMT_API_PORT:-9091}"
     volumes:
       - ./configs/telemt:/etc/telemt:ro
     tmpfs:
@@ -649,6 +650,24 @@ services:
     expose:
       - "9102"
     # Note: No depends_on as sing-box may not be running; exporter handles retry
+    profiles:
+      - monitoring
+      - all
+
+  # Telemt API Exporter - polls telemt REST API for ME pool, DC, and upstream health
+  telemt-api-exporter:
+    build:
+      context: ./exporters/telemt-api
+      dockerfile: Dockerfile
+    container_name: moav-telemt-api-exporter
+    restart: unless-stopped
+    networks:
+      - moav_net
+    environment:
+      - TELEMT_API_URL=http://telemt:${TELEMT_API_PORT:-9091}
+      - TZ=${TZ:-UTC}
+    expose:
+      - "9104"
     profiles:
       - monitoring
       - all
