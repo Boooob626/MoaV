@@ -41,6 +41,9 @@ ACTIVE_WINDOW = 300
 # Stats query interval (seconds)
 STATS_INTERVAL = 15
 
+# Track first successful stats query for diagnostics
+stats_query_count = 0
+
 
 def parse_log_line(line: str) -> bool:
     """Parse a log line and update metrics. Returns True if parsed."""
@@ -77,18 +80,29 @@ def update_active_users():
 
 
 def query_xray_stats():
-    """Query Xray Stats API for per-user traffic data."""
+    """Query Xray Stats API for per-user traffic data using -reset for incremental values."""
     try:
         result = subprocess.run(
             ['docker', 'exec', 'moav-xray', 'xray', 'api', 'statsquery',
-             '-s', '127.0.0.1:10085', '-pattern', 'user'],
+             '-s', '127.0.0.1:10085', '-pattern', 'user', '-reset'],
             capture_output=True, text=True, timeout=10
         )
 
         if result.returncode != 0:
-            if result.stderr:
-                print(f"Stats API error: {result.stderr.strip()}")
+            # Try alternative path (some images have xray at different location)
+            result = subprocess.run(
+                ['docker', 'exec', 'moav-xray', '/usr/local/bin/xray', 'api', 'statsquery',
+                 '-s', '127.0.0.1:10085', '-pattern', 'user', '-reset'],
+                capture_output=True, text=True, timeout=10
+            )
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip() if result.stderr else "no stderr"
+            print(f"Stats API error (rc={result.returncode}): {stderr}")
             return
+
+        if not result.stdout.strip():
+            return  # No stats yet (no traffic since last query)
 
         parse_stats_output(result.stdout)
 
@@ -100,8 +114,9 @@ def query_xray_stats():
 
 def parse_stats_output(output: str):
     """Parse protobuf text format stats output from xray api statsquery."""
-    # Split into stat blocks
+    global stats_query_count
     current_name = None
+    parsed_count = 0
 
     for line in output.splitlines():
         line = line.strip()
@@ -118,7 +133,6 @@ def parse_stats_output(output: str):
             # Format: user>>>username@moav>>>traffic>>>uplink/downlink
             parts = current_name.split(">>>")
             if len(parts) == 4 and parts[0] == "user" and parts[2] == "traffic":
-                # Extract username (remove @moav suffix)
                 username = parts[1].replace("@moav", "")
                 direction = parts[3]
 
@@ -127,8 +141,14 @@ def parse_stats_output(output: str):
                         user_upload[username] += value
                     elif direction == "downlink":
                         user_download[username] += value
+                parsed_count += 1
 
             current_name = None
+
+    stats_query_count += 1
+    if stats_query_count <= 3 or stats_query_count % 100 == 0:
+        print(f"Stats query #{stats_query_count}: parsed {parsed_count} entries, "
+              f"users with traffic: {len(user_upload)}")
 
 
 def tail_docker_logs():

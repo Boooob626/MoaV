@@ -79,5 +79,5 @@ scrape_configs:
   # NOTE: Only available when running with --profile telegram + monitoring
   - job_name: 'telemt-api'
     static_configs:
-      - targets: ['telemt-api-exporter:9104']
+      - targets: ['telemt-exporter:9104']
     scrape_timeout: 10s
