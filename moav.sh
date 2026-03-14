@@ -3702,6 +3702,16 @@ cmd_admin() {
             else
                 info "Admin container is not running. New password will take effect on next start."
             fi
+
+            # Update Grafana password if running (Grafana stores password in its DB, env var is only used on first boot)
+            if docker ps --filter "name=moav-grafana" --filter "status=running" -q 2>/dev/null | grep -q .; then
+                info "Updating Grafana admin password..."
+                if docker compose --profile monitoring exec -T grafana grafana cli admin reset-admin-password "$new_password" 2>/dev/null; then
+                    success "Grafana password updated"
+                else
+                    warn "Could not update Grafana password. You may need to reset it manually."
+                fi
+            fi
             ;;
         *)
             echo "Usage: moav admin <command>"
