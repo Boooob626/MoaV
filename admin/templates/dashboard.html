@@ -633,8 +633,14 @@
             </div>
             {% if not error %}
             <div class="stat">
-                <div class="stat-label">Proxy Traffic ↑ / ↓</div>
+                <div class="stat-label">Proxy ↑ / ↓</div>
                 <div class="stat-val" style="font-size:0.95rem;">{{ total_upload }}<span style="color:var(--text-dim);font-size:0.7rem;"> / </span>{{ total_download }}</div>
+            </div>
+            {% endif %}
+            {% if agg_stats.protocols.xray.upload or agg_stats.protocols.xray.download %}
+            <div class="stat">
+                <div class="stat-label">Xray ↑ / ↓</div>
+                <div class="stat-val" style="font-size:0.95rem;">{{ format_bytes(agg_stats.protocols.xray.upload) }}<span style="color:var(--text-dim);font-size:0.7rem;"> / </span>{{ format_bytes(agg_stats.protocols.xray.download) }}</div>
             </div>
             {% endif %}
             {% if conduit_stats.running %}
