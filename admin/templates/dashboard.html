@@ -545,6 +545,35 @@
         .footer-sep { opacity: 0.4; }
         .footer-info { color: var(--text-dim); opacity: 0.7; }
 
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .toast {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            padding: 0.6rem 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            max-width: 360px;
+            animation: toast-in 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .toast.error { border-color: var(--red); background: var(--red-dim); }
+        .toast.success { border-color: var(--green); background: var(--green-dim); }
+        .toast.warn { border-color: var(--yellow); background: var(--yellow-dim); }
+        @keyframes toast-in { from { opacity: 0; transform: translateX(1rem); } to { opacity: 1; transform: translateX(0); } }
+
         /* Responsive */
         @media (max-width: 640px) {
             .shell { padding: 1rem; }
@@ -556,6 +585,7 @@
     </style>
 </head>
 <body>
+    <div class="toast-container" id="toast-container"></div>
     <div class="shell">
         <div class="topbar">
             <h1><img src="/logo.png" alt="" class="logo">MoaV</h1>
@@ -821,6 +851,15 @@
     <script>
         let panelOpen = false;
 
+        function toast(msg, type = 'error', duration = 4000) {
+            const container = document.getElementById('toast-container');
+            const el = document.createElement('div');
+            el.className = 'toast ' + type;
+            el.textContent = msg;
+            container.appendChild(el);
+            setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }, duration);
+        }
+
         function toggleSection(id) {
             const section = document.getElementById(id);
             const btn = section.querySelector('.collapse-btn');
@@ -863,8 +902,8 @@
             const btn = document.getElementById('create-btn');
             const result = document.getElementById('create-result');
 
-            if (!username) { alert('Enter a username'); return false; }
-            if (batchOn && batch < 1) { alert('Enter a batch count'); return false; }
+            if (!username) { toast('Enter a username', 'warn'); return false; }
+            if (batchOn && batch < 1) { toast('Enter a batch count', 'warn'); return false; }
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Creating...';
@@ -921,8 +960,8 @@
             const protocols = Array.from(checked).map(c => c.value);
             const btn = document.getElementById('donate-btn');
 
-            if (!prefix) { alert('Enter a prefix'); return false; }
-            if (protocols.length === 0) { alert('Select at least one protocol'); return false; }
+            if (!prefix) { toast('Enter a prefix', 'warn'); return false; }
+            if (protocols.length === 0) { toast('Select at least one protocol', 'warn'); return false; }
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Donating...';
@@ -985,7 +1024,7 @@
                         <td style="font-family:var(--mono);font-size:0.7rem;">${typeof c.health_status_percent === 'number' ? c.health_status_percent + '%' : (typeof c.health_status_percent === 'string' ? c.health_status_percent + '%' : '—')}</td>
                         <td style="font-family:var(--mono);font-size:0.7rem;">${c.num_consumed || 0}</td>
                         <td style="text-align:right;">
-                            <button class="btn-del" onclick="deleteMahsaConfig('${c.hash}')">del</button>
+                            <button class="btn-del" onclick="deleteMahsaConfig('${c.id || c.hash}')">del</button>
                         </td>
                     </tr>
                 `).join('');
@@ -1002,10 +1041,10 @@
                     loadMahsanetConfigs();
                 } else {
                     const err = await resp.json().catch(() => ({}));
-                    alert(err.detail || `Failed to delete config (HTTP ${resp.status})`);
+                    toast(err.detail || `Failed to delete config (HTTP ${resp.status})`);
                 }
             } catch (e) {
-                alert('Error: ' + e.message);
+                toast('Error: ' + e.message);
             }
         }
 
