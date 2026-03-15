@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-03-15
+
+### Fixed
+- **Xray Stats API traffic parsing** — Output is JSON format, not protobuf text; replaced regex parser with `json.loads()` for correct per-user traffic metrics
+- **Xray Stats API `-reset` flag** — Removed `-reset` flag that returned empty values when delta was 0; now reads cumulative values (Prometheus handles rate calculation)
+- **sing-box Clash API authentication** — Fixed secret loading from state volume (`/state/keys/clash-api.env`) and auth method (`Authorization: Bearer` header)
+- **Bootstrap `local` outside function** — `local` keyword on line 64 caused `bootstrap.sh` to fail in domainless mode ([#77](https://github.com/shayanb/MoaV/issues/77))
+- **DNS port 53 check on `moav start all`** — No longer prompts to disable systemd-resolved when DNS tunnels are disabled (`ENABLE_DNSTT=false`)
+- **Double monitoring prompt** — `moav start all` no longer asks "Enable monitoring?" twice when `ENABLE_MONITORING=false`
+- **Grafana geo panels not rendering** — Moved nested panels to top-level (Grafana requires uncollapsed row children at top level)
+- **Grafana geo table empty** — Changed table queries from ephemeral gauge (`active_users_by_country`) to cumulative counter (`connections_by_country`) for sing-box/xray; changed WG/AWG to `count by (country) (peer_active)` to show all peers
+
+### Changed
+- **Xray Grafana dashboard layout** — Reorganized panels: User Details table moved to same row as Connection Rate and Connections by User
+
 ## [1.6.0] - 2026-03-15
 
 ### Added
@@ -794,7 +809,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uTLS fingerprint spoofing (Chrome)
 - Automatic short ID generation for Reality
 
-[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/shayanb/MoaV/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/shayanb/MoaV/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/shayanb/MoaV/compare/v1.4.7...v1.5.1
 [1.4.7]: https://github.com/shayanb/MoaV/compare/v1.4.5...v1.4.7
