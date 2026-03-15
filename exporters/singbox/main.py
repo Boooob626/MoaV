@@ -3,7 +3,7 @@
 Sing-box User Prometheus Exporter
 
 Parses sing-box container logs to extract user connection metrics.
-Log format: ... [username] inbound connection to ...
+Log format: ... inbound/protocol[tag]: [username] inbound connection from IP:port
 """
 
 import re
@@ -13,19 +13,27 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
 from datetime import datetime
+from geoip import GeoIPLookup
 
 # Metrics storage
 user_connections = defaultdict(int)  # user -> total connections
 user_last_seen = {}  # user -> timestamp
 active_users = set()  # users seen in last 5 minutes
 protocol_connections = defaultdict(int)  # protocol -> total connections
+country_connections = defaultdict(int)  # country -> total connections
+user_country = {}  # user -> last seen country code
 
 # Lock for thread safety
 metrics_lock = threading.Lock()
 
-# Regex to parse connection lines with usernames
-# Example: [newaidin] inbound connection to vas.samsungapps.com:443
-USER_PATTERN = re.compile(r'\[([^\]]+)\]\s*inbound connection')
+# GeoIP lookup
+geoip = GeoIPLookup()
+
+# Regex to parse connection lines with usernames and source IP
+# Example: inbound/hysteria2[hysteria2-in]: [user] inbound connection from 1.2.3.4:12345
+USER_IP_PATTERN = re.compile(
+    r'\[([^\]]+)\]\s*inbound connection(?:\s+from\s+(\d+\.\d+\.\d+\.\d+))?'
+)
 
 # Regex to extract protocol from inbound name
 # Example: inbound/hysteria2[hysteria2-in]: [user]
@@ -36,22 +44,28 @@ ACTIVE_WINDOW = 300
 
 def parse_log_line(line: str) -> bool:
     """Parse a log line and update metrics. Returns True if parsed."""
-    # Check for user connection
-    user_match = USER_PATTERN.search(line)
+    user_match = USER_IP_PATTERN.search(line)
     if not user_match:
         return False
 
     username = user_match.group(1)
+    source_ip = user_match.group(2)  # may be None
     now = time.time()
 
     # Extract protocol if present
     protocol_match = PROTOCOL_PATTERN.search(line)
     protocol = protocol_match.group(1) if protocol_match else "unknown"
 
+    # GeoIP lookup
+    country = geoip.lookup(source_ip) if source_ip else "XX"
+
     with metrics_lock:
         user_connections[username] += 1
         user_last_seen[username] = now
         protocol_connections[protocol] += 1
+        country_connections[country] += 1
+        if source_ip:
+            user_country[username] = country
 
     return True
 
@@ -73,7 +87,6 @@ def tail_docker_logs():
 
     while True:
         try:
-            # Use docker logs to tail the sing-box container
             process = subprocess.Popen(
                 ['docker', 'logs', '-f', '--tail', '100', 'moav-sing-box'],
                 stdout=subprocess.PIPE,
@@ -91,7 +104,6 @@ def tail_docker_logs():
         except Exception as e:
             print(f"Error tailing logs: {e}")
 
-        # Retry after delay
         print("Log tailer disconnected, retrying in 5s...")
         time.sleep(5)
 
@@ -147,6 +159,22 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 for protocol, count in sorted(protocol_connections.items()):
                     output.append(f'singbox_protocol_connections{{protocol="{protocol}"}} {count}')
 
+                # Connections by country
+                output.append('# HELP singbox_connections_by_country Total connections by source country')
+                output.append('# TYPE singbox_connections_by_country counter')
+                for country, count in sorted(country_connections.items()):
+                    output.append(f'singbox_connections_by_country{{country="{country}"}} {count}')
+
+                # Active users by country
+                output.append('# HELP singbox_active_users_by_country Active users by source country')
+                output.append('# TYPE singbox_active_users_by_country gauge')
+                active_country_counts = defaultdict(int)
+                for user in active_users:
+                    c = user_country.get(user, "XX")
+                    active_country_counts[c] += 1
+                for country, count in sorted(active_country_counts.items()):
+                    output.append(f'singbox_active_users_by_country{{country="{country}"}} {count}')
+
             self.wfile.write('\n'.join(output).encode())
 
         elif self.path == '/health':
@@ -159,7 +187,6 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def log_message(self, format, *args):
-        # Suppress access logs
         pass
 
 def main():

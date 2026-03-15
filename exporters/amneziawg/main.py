@@ -11,6 +11,8 @@ import subprocess
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from collections import defaultdict
+from geoip import GeoIPLookup
 
 # Metrics storage
 metrics = {
@@ -24,6 +26,9 @@ metrics_lock = threading.Lock()
 # Peer name mapping (from config file)
 peer_names = {}  # public_key -> name
 
+# GeoIP lookup
+geoip = GeoIPLookup()
+
 
 def load_peer_names():
     """Load peer names from amneziawg config."""
@@ -32,14 +37,13 @@ def load_peer_names():
         with open('/etc/amneziawg/awg0.conf', 'r') as f:
             content = f.read()
 
-        # Parse config for peer names (comments before [Peer] sections)
         current_name = None
         for line in content.split('\n'):
             line = line.strip()
             if line.startswith('# ') and not line.startswith('# ='):
                 current_name = line[2:].strip()
             elif line == '[Peer]':
-                pass  # Next line with PublicKey will use current_name
+                pass
             elif line.startswith('PublicKey') and current_name:
                 pubkey = line.split('=', 1)[1].strip()
                 peer_names[pubkey] = current_name
@@ -131,6 +135,14 @@ def parse_transfer(transfer_str: str) -> tuple:
     return rx_bytes, tx_bytes
 
 
+def extract_ip_from_endpoint(endpoint: str) -> str:
+    """Extract IP from endpoint string (IP:port format)."""
+    if not endpoint:
+        return ""
+    parts = endpoint.rsplit(':', 1)
+    return parts[0] if parts else ""
+
+
 def collect_metrics():
     """Run awg show and collect metrics."""
     try:
@@ -146,6 +158,11 @@ def collect_metrics():
             return
 
         interface, peers = parse_awg_show(result.stdout)
+
+        # Add country to each peer
+        for pubkey, peer in peers.items():
+            ip = extract_ip_from_endpoint(peer['endpoint'])
+            peer['country'] = geoip.lookup(ip) if ip else "XX"
 
         with metrics_lock:
             metrics['interface'] = interface
@@ -201,9 +218,12 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 output.append('# HELP amneziawg_peer_active Whether peer has recent handshake (1=active)')
                 output.append('# TYPE amneziawg_peer_active gauge')
 
+                country_counts = defaultdict(int)
+
                 for pubkey, peer in metrics['peers'].items():
                     name = peer_names.get(pubkey, pubkey[:8] + '...')
-                    labels = f'public_key="{pubkey}",name="{name}"'
+                    country = peer.get('country', 'XX')
+                    labels = f'public_key="{pubkey}",name="{name}",country="{country}"'
 
                     output.append(f'amneziawg_peer_transfer_rx_bytes{{{labels}}} {peer["transfer_rx"]}')
                     output.append(f'amneziawg_peer_transfer_tx_bytes{{{labels}}} {peer["transfer_tx"]}')
@@ -212,9 +232,17 @@ class MetricsHandler(BaseHTTPRequestHandler):
                         output.append(f'amneziawg_peer_latest_handshake_seconds{{{labels}}} {peer["latest_handshake"]}')
                         is_active = 1 if (time.time() - peer['latest_handshake']) < 180 else 0
                         output.append(f'amneziawg_peer_active{{{labels}}} {is_active}')
+                        if is_active:
+                            country_counts[country] += 1
                     else:
                         output.append(f'amneziawg_peer_latest_handshake_seconds{{{labels}}} 0')
                         output.append(f'amneziawg_peer_active{{{labels}}} 0')
+
+                # Active peers by country
+                output.append('# HELP amneziawg_active_peers_by_country Active peers by source country')
+                output.append('# TYPE amneziawg_active_peers_by_country gauge')
+                for country, count in sorted(country_counts.items()):
+                    output.append(f'amneziawg_active_peers_by_country{{country="{country}"}} {count}')
 
                 # Last update timestamp
                 output.append('# HELP amneziawg_last_update_timestamp Unix timestamp of last successful update')
