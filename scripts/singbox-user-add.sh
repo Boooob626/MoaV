@@ -372,13 +372,15 @@ XRAY_CONFIG="configs/xray/config.json"
 if [[ "${ENABLE_XHTTP:-false}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
     log_info "Adding $USERNAME to Xray (XHTTP)..."
 
-    # Check if user already exists
-    if jq -e --arg uuid "$USER_UUID" '.inbounds[0].settings.clients[] | select(.id == $uuid)' "$XRAY_CONFIG" >/dev/null 2>&1; then
+    # Check if user already exists (search by UUID in the vless-xhttp-reality inbound)
+    if jq -e --arg uuid "$USER_UUID" \
+        '[.inbounds[] | select(.tag == "vless-xhttp-reality")] | .[0].settings.clients[] | select(.id == $uuid)' \
+        "$XRAY_CONFIG" >/dev/null 2>&1; then
         log_info "User '$USERNAME' already exists in Xray config, skipping..."
     else
-        # Add new client entry (flow MUST be empty for XHTTP)
+        # Add new client entry to the vless-xhttp-reality inbound (flow MUST be empty for XHTTP)
         jq --arg id "$USER_UUID" --arg email "${USERNAME}@moav" \
-            '.inbounds[0].settings.clients += [{"id": $id, "email": $email, "flow": ""}]' \
+            '(.inbounds[] | select(.tag == "vless-xhttp-reality")).settings.clients += [{"id": $id, "email": $email, "flow": ""}]' \
             "$XRAY_CONFIG" > /tmp/xray.tmp && mv -f /tmp/xray.tmp "$XRAY_CONFIG"
         log_info "Added $USERNAME to Xray config"
     fi
