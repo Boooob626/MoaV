@@ -2356,7 +2356,8 @@ ensure_clash_api_secret() {
 
     # .env is empty — first-time monitoring setup
     # If using 'all' profile, ask user if they want to enable monitoring (requires 2GB RAM)
-    if [[ -z "$current_secret" ]]; then
+    # Skip if user already confirmed monitoring above (ENABLE_MONITORING was false -> set to true)
+    if [[ -z "$current_secret" ]] && [[ "$enable_monitoring" != "false" ]]; then
         if echo "$profiles" | grep -qE "\ball\b|--profile all"; then
             echo ""
             warn "Monitoring requires at least 2GB RAM to run properly."
@@ -4122,8 +4123,12 @@ cmd_start() {
         profiles="--profile proxy --profile wireguard --profile dnstunnel --profile trusttunnel --profile admin --profile conduit --profile snowflake"
     fi
 
-    # Check port 53 if DNS tunnels are being started
-    if echo "$profiles" | grep -qE "dnstunnel|all"; then
+    # Check port 53 if DNS tunnels are being started AND enabled
+    local dnstt_enabled
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "true")
+    local slipstream_enabled
+    slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "false")
+    if echo "$profiles" | grep -qE "dnstunnel|all" && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
         if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
             echo ""
             warn "Port 53 is in use (likely by systemd-resolved)"
