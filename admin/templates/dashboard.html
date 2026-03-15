@@ -725,6 +725,9 @@
                 <span><span class="stat-val green">{{ all_users|selectattr('has_hysteria2')|list|length }}</span> Hy2</span>
                 <span><span class="stat-val green">{{ all_users|selectattr('has_wireguard')|list|length }}</span> WG</span>
                 <span><span class="stat-val green">{{ all_users|selectattr('has_amneziawg')|list|length }}</span> AWG</span>
+                {% if all_users|selectattr('is_donated')|list|length > 0 %}
+                <span><span class="stat-val yellow">{{ all_users|selectattr('is_donated')|list|length }}</span> donated</span>
+                {% endif %}
                 {% endif %}
             </div>
             <div id="create-panel" class="create-panel">
@@ -746,6 +749,7 @@
                 </form>
                 <div id="create-result" class="create-result"></div>
             </div>
+            <div class="section-body">
             {% if all_users %}
             <table>
                 <thead>
@@ -784,6 +788,7 @@
             {% else %}
             <div class="empty-msg">No users yet. Create one above or run <code>moav user add</code></div>
             {% endif %}
+            </div>
         </div>
 
         <footer class="footer">
