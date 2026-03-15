@@ -25,6 +25,9 @@ else
     echo "[admin] SSL: Disabled (no certificates found)"
 fi
 
+# Fix ownership of writable mounts (may be root-owned from previous runs)
+chown -R moav:moav /project/outputs /project/configs /project/state 2>/dev/null || true
+
 # Run the dashboard as non-root
 echo "[admin] Starting uvicorn server..."
 exec su-exec moav python main.py
