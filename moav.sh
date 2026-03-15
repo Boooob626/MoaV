@@ -3298,21 +3298,123 @@ cmd_donate_mahsanet_list() {
         return 0
     fi
 
-    printf "  %-42s %-10s %6s  %4s\n" "URL" "Status" "Health" "Used"
-    echo "  $(printf '%.0s─' {1..70})"
+    printf "  %3s  %-38s %-10s %6s  %4s\n" "#" "URL" "Status" "Health" "Used"
+    echo "  $(printf '%.0s─' {1..74})"
 
+    local i=1
     echo "$body" | jq -r '.results[] | [
-        (.url[:38] + (if (.url | length) > 38 then ".." else "" end)),
+        (.url[:34] + (if (.url | length) > 34 then ".." else "" end)),
         (if .is_active then "active" else "inactive" end),
         (if .health_status_percent == null then "—" elif (.health_status_percent | type) == "number" then (.health_status_percent | tostring) + "%" elif (.health_status_percent | type) == "string" then .health_status_percent + "%" else "—" end),
         (.num_consumed // 0 | tostring)
     ] | @tsv' 2>/dev/null | while IFS=$'\t' read -r url status health used; do
-        printf "  %-42s %-10s %6s  %4s\n" "$url" "$status" "$health" "$used"
+        printf "  %3s  %-38s %-10s %6s  %4s\n" "$i" "$url" "$status" "$health" "$used"
+        i=$((i + 1))
     done
 
     echo ""
     info "Total: $count config(s)"
+    echo -e "  ${DIM}To delete specific configs: moav donate mahsanet delete${NC}"
 }
+
+cmd_donate_mahsanet_delete() {
+    local api_key="$1"
+
+    # Get all configs
+    local response
+    response=$(mahsanet_api_call "GET" "?limit=100" "" "$api_key")
+    local http_code
+    http_code=$(echo "$response" | tail -1)
+    local body
+    body=$(echo "$response" | sed '$d')
+
+    if [[ "$http_code" != "200" ]]; then
+        error "Failed to fetch configs (HTTP $http_code)"
+        return 1
+    fi
+
+    local count
+    count=$(echo "$body" | jq -r '.count // 0')
+
+    if [[ "$count" == "0" ]]; then
+        info "No configs to delete."
+        return 0
+    fi
+
+    # Show numbered list
+    echo ""
+    printf "  %3s  %-48s %-10s\n" "#" "URL" "Status"
+    echo "  $(printf '%.0s─' {1..68})"
+
+    local i=1
+    echo "$body" | jq -r '.results[] | [
+        (.url[:44] + (if (.url | length) > 44 then ".." else "" end)),
+        (if .is_active then "active" else "inactive" end)
+    ] | @tsv' 2>/dev/null | while IFS=$'\t' read -r url status; do
+        printf "  %3s  %-48s %-10s\n" "$i" "$url" "$status"
+        i=$((i + 1))
+    done
+    echo ""
+
+    echo -n "  Enter numbers to delete (e.g. 1 3 5, or 'all'): "
+    read -r selection
+
+    if [[ -z "$selection" ]]; then
+        info "Cancelled."
+        return 0
+    fi
+
+    # Build list of ids to delete
+    local ids_json
+    ids_json=$(echo "$body" | jq -r '[.results[] | (.id // .hash)]')
+
+    local to_delete=()
+    if [[ "$selection" == "all" ]]; then
+        while IFS= read -r id; do
+            to_delete+=("$id")
+        done < <(echo "$ids_json" | jq -r '.[]')
+    else
+        for num in $selection; do
+            local idx=$((num - 1))
+            local id
+            id=$(echo "$ids_json" | jq -r ".[$idx] // empty")
+            if [[ -n "$id" ]]; then
+                to_delete+=("$id")
+            else
+                warn "Invalid number: $num"
+            fi
+        done
+    fi
+
+    if [[ ${#to_delete[@]} -eq 0 ]]; then
+        info "Nothing to delete."
+        return 0
+    fi
+
+    warn "Will delete ${#to_delete[@]} config(s) from MahsaNet."
+    if ! confirm "Are you sure?" "n"; then
+        info "Cancelled."
+        return 0
+    fi
+
+    local removed=0
+    local failed=0
+    for id in "${to_delete[@]}"; do
+        local del_response
+        del_response=$(mahsanet_api_call "DELETE" "${id}/" "" "$api_key")
+        local del_code
+        del_code=$(echo "$del_response" | tail -1)
+        if [[ "$del_code" == "204" || "$del_code" == "200" ]]; then
+            removed=$((removed + 1))
+        else
+            failed=$((failed + 1))
+            warn "Failed to remove config $id (HTTP $del_code)"
+        fi
+    done
+
+    echo ""
+    success "Removed $removed config(s) from MahsaNet"
+    [[ $failed -gt 0 ]] && warn "$failed config(s) failed to remove"
 
 cmd_donate_mahsanet_status() {
     local api_key="$1"
@@ -3432,6 +3534,7 @@ cmd_donate_mahsanet() {
         echo "  --setup     Set up MahsaNet API key"
         echo "  --list      List donated configs"
         echo "  --status    Show donation status"
+        echo "  --delete    Select and delete specific configs"
         echo "  --remove    Remove all donated configs"
         echo "  --help      Show this help message"
         echo ""
@@ -3470,6 +3573,7 @@ cmd_donate_mahsanet() {
     case "$action" in
         list)   cmd_donate_mahsanet_list "$api_key" ;;
         status) cmd_donate_mahsanet_status "$api_key" ;;
+        delete) cmd_donate_mahsanet_delete "$api_key" ;;
         remove) cmd_donate_mahsanet_remove "$api_key" ;;
         *)      cmd_donate_mahsanet_donate "$api_key" ;;
     esac
