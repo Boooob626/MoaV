@@ -401,6 +401,36 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* Collapsible sections */
+        .collapse-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .collapse-btn:hover { color: var(--text); border-color: var(--text-dim); }
+        .section-summary {
+            display: none;
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            padding: 0.5rem 1rem;
+            color: var(--text-dim);
+            gap: 1.5rem;
+        }
+        .section-summary .stat-val { color: var(--text); font-weight: 600; }
+        .section-summary .stat-val.green { color: var(--green); }
+        .section-summary .stat-val.blue { color: var(--blue); }
+        .section-summary .stat-val.yellow { color: var(--yellow); }
+        .section.collapsed .section-body,
+        .section.collapsed .create-panel { display: none !important; }
+        .section.collapsed .section-summary { display: flex; }
+        .section.collapsed .section-head { border-bottom: none; }
+
         /* MahsaNet donation */
         .mahsa-stats {
             display: flex;
@@ -619,13 +649,19 @@
 
         <!-- MahsaNet Donation -->
         {% if mahsanet_configured %}
-        <div class="section">
+        <div class="section" id="mahsa-section">
             <div class="section-head">
                 <h2>MahsaNet</h2>
                 <div style="display:flex;gap:0.5rem;">
+                    <button class="collapse-btn" onclick="toggleSection('mahsa-section')">collapse</button>
                     <button class="btn" onclick="loadMahsanetConfigs()">Refresh</button>
                     <button class="btn btn-green" onclick="toggleDonatePanel()">+ Donate</button>
                 </div>
+            </div>
+            <div class="section-summary">
+                <span><span class="stat-label">Total:</span><span class="stat-val blue" id="mahsa-total-s">-</span></span>
+                <span><span class="stat-label">Active:</span><span class="stat-val green" id="mahsa-active-s">-</span></span>
+                <span><span class="stat-label">Inactive:</span><span class="stat-val yellow" id="mahsa-inactive-s">-</span></span>
             </div>
             <div id="donate-panel" class="create-panel">
                 <form class="donate-form" onsubmit="return donateMahsanet(event)">
@@ -674,10 +710,22 @@
         {% endif %}
 
         <!-- Users -->
-        <div class="section">
+        <div class="section" id="users-section">
             <div class="section-head">
                 <h2>Users</h2>
-                <button class="btn btn-green" onclick="toggleCreatePanel()">+ New</button>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="collapse-btn" onclick="toggleSection('users-section')">collapse</button>
+                    <button class="btn btn-green" onclick="toggleCreatePanel()">+ New</button>
+                </div>
+            </div>
+            <div class="section-summary">
+                <span><span class="stat-val blue">{{ all_users|length }}</span> users</span>
+                {% if all_users %}
+                <span><span class="stat-val green">{{ all_users|selectattr('has_reality')|list|length }}</span> Reality</span>
+                <span><span class="stat-val green">{{ all_users|selectattr('has_hysteria2')|list|length }}</span> Hy2</span>
+                <span><span class="stat-val green">{{ all_users|selectattr('has_wireguard')|list|length }}</span> WG</span>
+                <span><span class="stat-val green">{{ all_users|selectattr('has_amneziawg')|list|length }}</span> AWG</span>
+                {% endif %}
             </div>
             <div id="create-panel" class="create-panel">
                 <form class="create-form" onsubmit="return createUser(event)">
@@ -751,6 +799,13 @@
 
     <script>
         let panelOpen = false;
+
+        function toggleSection(id) {
+            const section = document.getElementById(id);
+            const btn = section.querySelector('.collapse-btn');
+            section.classList.toggle('collapsed');
+            btn.textContent = section.classList.contains('collapsed') ? 'expand' : 'collapse';
+        }
 
         function toggleCreatePanel() {
             const panel = document.getElementById('create-panel');
@@ -886,6 +941,9 @@
                     document.getElementById('mahsa-total').textContent = status.total;
                     document.getElementById('mahsa-active').textContent = status.active;
                     document.getElementById('mahsa-inactive').textContent = status.inactive;
+                    document.getElementById('mahsa-total-s').textContent = status.total;
+                    document.getElementById('mahsa-active-s').textContent = status.active;
+                    document.getElementById('mahsa-inactive-s').textContent = status.inactive;
                 }
 
                 /* Load configs */
