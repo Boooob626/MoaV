@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **GeoIP country labeling** — Country-level user distribution on Grafana dashboards
+  - DB-IP Lite database (free, no API key, local lookups, zero external API calls at runtime)
+  - `geoip-updater` one-shot service downloads the MMDB database into shared volume
+  - sing-box and xray exporters extract client source IPs from logs, expose `*_connections_by_country` and `*_active_users_by_country` metrics
+  - WireGuard and AmneziaWG exporters add `country` label to per-peer metrics, expose `*_active_peers_by_country` aggregate
+  - Grafana dashboards: "Geographic Distribution" row with donut pie chart and sorted country table on all 4 dashboards
+  - Graceful degradation: missing GeoIP DB returns "XX", existing metrics unaffected
+- **Non-root containers** (PR [#68](https://github.com/shayanb/MoaV/pull/68)) — All service containers run as non-root `moav` user
+  - `setcap` for privileged port binding (sing-box, wstunnel, telemt, nginx, trusttunnel)
+  - `gosu`/`su-exec` privilege drop pattern for services needing root-owned volume fixup
+  - Docker socket proxy (`tecnativa/docker-socket-proxy:v0.4.2`) replaces raw socket mount for admin
+  - `.dockerignore` prevents secrets from leaking into build context
+- **Telemt anti-DPI tuning** — Configurable anti-censorship settings for MTProxy
+  - Keepalive payload randomization, timing jitter, warmup jitter, pool hardswap
+  - Fast reconnect backoff, config stability snapshots, STUN TCP fallback
+  - All 17 settings configurable from `.env` with documentation and upstream doc links
+  - Telemt REST API exporter with Grafana panels (ME pool, DC availability, upstream quality, NAT type)
+- **Xray Stats API integration** — Per-user upload/download traffic metrics via `-reset` flag for correct incremental accumulation
+- **Admin dashboard collapsible sections** — MahsaNet and Users sections can be minimized to one-liner stats summaries
+- **Bootstrap Docker optimization** — sing-box binary downloaded directly instead of pulling full container image (fixes hang in censored networks, [#75](https://github.com/shayanb/MoaV/issues/75)); scripts volume-mounted instead of COPY'd; cached image reuse on subsequent runs
+
+### Fixed
+- **Xray IPv6 "network unreachable" errors** — Added blackhole outbound + routing rule to silently drop IPv6 traffic (`::/0`), fixing slowness caused by clients sending raw IPv6 addresses
+- **Xray per-user traffic Grafana panels empty** — `statsquery` without `-reset` returns cumulative values causing double-counting; added `-reset` flag and fallback binary path
+- **Bootstrap invalidating user bundles** — `generate-user.sh` now guards each protocol with file existence checks, only regenerates when configs are missing or `FORCE_REGENERATE` is set
+- **Bootstrap failing for all users on single failure** — Made `generate-user.sh` calls non-fatal (`|| log_error`) so one user's failure doesn't prevent server config generation
+- **sing-box cert permission denied after non-root migration** — Entrypoint copies certs to `/tmp/certs/` and rewrites config paths before privilege drop
+- **TrustTunnel `sed` on read-only filesystem** — Configs copied to `/tmp/trusttunnel/` before `sed` cert path rewrite
+- **TrustTunnel `exec failed: operation not permitted`** — Added `cap_add: NET_ADMIN` to docker-compose for `gosu` + `setcap` to work
+- **Conduit `/data` permission denied** — Added `gosu` privilege drop with `chown` for root-owned volumes from pre-migration runs
+- **Admin outputs/bundles write permission** — Entrypoint `chown`s writable mounts before `su-exec` privilege drop
+- **dnstt/slipstream `depends on undefined service`** — Removed cross-profile `depends_on: sing-box` that broke `moav start dnstunnel` without proxy profile
+- **MahsaNet health display `{}%` / `[object Object]`** — Fixed CLI jq filter and dashboard JS to handle non-numeric `health_status_percent` from API
+- **wstunnel missing `setcap`** — Added `setcap cap_net_bind_service` for port 443 binding as non-root
+
+### Changed
+- **Renamed** `telemt-api-exporter` to `telemt-exporter` across all files
+- **Exporter build contexts** changed to `./exporters` for shared `geoip.py` module access
+- **sing-box version** bumped to 1.13.2 for bootstrap container
+
 ## [1.5.1] - 2026-03-14
 
 ### Added
