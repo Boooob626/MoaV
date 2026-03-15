@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-03-15
+
+### Fixed
+- **Xray Stats API traffic parsing** — Output is JSON format, not protobuf text; replaced regex parser with `json.loads()` for correct per-user traffic metrics
+- **Xray Stats API `-reset` flag** — Removed `-reset` flag that returned empty values when delta was 0; now reads cumulative values (Prometheus handles rate calculation)
+- **sing-box Clash API authentication** — Fixed secret loading from state volume (`/state/keys/clash-api.env`) and auth method (`Authorization: Bearer` header)
+- **Bootstrap `local` outside function** — `local` keyword on line 64 caused `bootstrap.sh` to fail in domainless mode ([#77](https://github.com/shayanb/MoaV/issues/77))
+- **DNS port 53 check on `moav start all`** — No longer prompts to disable systemd-resolved when DNS tunnels are disabled (`ENABLE_DNSTT=false`)
+- **Double monitoring prompt** — `moav start all` no longer asks "Enable monitoring?" twice when `ENABLE_MONITORING=false`
+- **Grafana geo panels not rendering** — Moved nested panels to top-level (Grafana requires uncollapsed row children at top level)
+- **Grafana geo table empty** — Changed table queries from ephemeral gauge (`active_users_by_country`) to cumulative counter (`connections_by_country`) for sing-box/xray; changed WG/AWG to `count by (country) (peer_active)` to show all peers
+
+### Changed
+- **Xray Grafana dashboard layout** — Reorganized panels: User Details table moved to same row as Connection Rate and Connections by User
+
+## [1.6.0] - 2026-03-15
+
+### Added
+- **GeoIP country labeling** — Country-level user distribution on Grafana dashboards
+  - DB-IP Lite database (free, no API key, local lookups, zero external API calls at runtime)
+  - `geoip-updater` one-shot service downloads the MMDB database into shared volume
+  - sing-box and xray exporters extract client source IPs from logs, expose `*_connections_by_country` and `*_active_users_by_country` metrics
+  - WireGuard and AmneziaWG exporters add `country` label to per-peer metrics, expose `*_active_peers_by_country` aggregate
+  - Grafana dashboards: "Geographic Distribution" row with donut pie chart and sorted country table on all 4 dashboards
+  - Graceful degradation: missing GeoIP DB returns "XX", existing metrics unaffected
+- **Non-root containers** (PR [#68](https://github.com/shayanb/MoaV/pull/68)) — All service containers run as non-root `moav` user
+  - `setcap` for privileged port binding (sing-box, wstunnel, telemt, nginx, trusttunnel)
+  - `gosu`/`su-exec` privilege drop pattern for services needing root-owned volume fixup
+  - Docker socket proxy (`tecnativa/docker-socket-proxy:v0.4.2`) replaces raw socket mount for admin
+  - `.dockerignore` prevents secrets from leaking into build context
+- **Telemt anti-DPI tuning** — Configurable anti-censorship settings for MTProxy
+  - Keepalive payload randomization, timing jitter, warmup jitter, pool hardswap
+  - Fast reconnect backoff, config stability snapshots, STUN TCP fallback
+  - All 17 settings configurable from `.env` with documentation and upstream doc links
+  - Telemt REST API exporter with Grafana panels (ME pool, DC availability, upstream quality, NAT type)
+- **Xray Stats API integration** — Per-user upload/download traffic metrics via `-reset` flag for correct incremental accumulation
+- **Admin dashboard overhaul** — Collapsible MahsaNet/Users sections, Prometheus-backed aggregate stats (active users, total users, connections, traffic across all protocols), improved footer with server info and live uptime, toast notifications replacing browser alerts
+- **`moav donate` command refactor** — Flat command structure (`moav donate`, `moav donate setup`, `moav donate list`, `moav donate delete`) replacing nested `moav donate mahsanet --flag` pattern; interactive wizard with service auto-selection
+- **Bootstrap Docker optimization** — sing-box binary downloaded directly instead of pulling full container image (fixes hang in censored networks, [#75](https://github.com/shayanb/MoaV/issues/75)); scripts volume-mounted instead of COPY'd; cached image reuse on subsequent runs
+
+### Fixed
+- **Xray IPv6 "network unreachable" errors** — Added blackhole outbound + routing rule to silently drop IPv6 traffic (`::/0`), fixing slowness caused by clients sending raw IPv6 addresses
+- **Xray per-user traffic Grafana panels empty** — `statsquery` without `-reset` returns cumulative values causing double-counting; added `-reset` flag and fallback binary path
+- **Bootstrap invalidating user bundles** — `generate-user.sh` now guards each protocol with file existence checks, only regenerates when configs are missing or `FORCE_REGENERATE` is set
+- **Bootstrap failing for all users on single failure** — Made `generate-user.sh` calls non-fatal (`|| log_error`) so one user's failure doesn't prevent server config generation
+- **sing-box cert permission denied after non-root migration** — Entrypoint copies certs to `/tmp/certs/` and rewrites config paths before privilege drop
+- **TrustTunnel `sed` on read-only filesystem** — Configs copied to `/tmp/trusttunnel/` before `sed` cert path rewrite
+- **TrustTunnel `exec failed: operation not permitted`** — Added `cap_add: NET_ADMIN` to docker-compose for `gosu` + `setcap` to work
+- **Conduit `/data` permission denied** — Added `gosu` privilege drop with `chown` for root-owned volumes from pre-migration runs
+- **Admin outputs/bundles write permission** — Entrypoint `chown`s writable mounts before `su-exec` privilege drop
+- **dnstt/slipstream `depends on undefined service`** — Removed cross-profile `depends_on: sing-box` that broke `moav start dnstunnel` without proxy profile
+- **MahsaNet health display `{}%` / `[object Object]`** — Fixed CLI jq filter and dashboard JS to handle non-numeric `health_status_percent` from API
+- **wstunnel missing `setcap`** — Added `setcap cap_net_bind_service` for port 443 binding as non-root
+- **Xray user-add targeting wrong inbound** — `singbox-user-add.sh` added users to `inbounds[0]` (api-in) instead of the VLESS inbound; fixed to target by tag `vless-xhttp-reality`
+- **sing-box GeoIP Clash API auth** — Fixed secret loading from state volume (`/state/keys/clash-api.env`) and auth method (Bearer header)
+
+### Changed
+- **Renamed** `telemt-api-exporter` to `telemt-exporter` across all files
+- **Exporter build contexts** changed to `./exporters` for shared `geoip.py` module access
+- **sing-box version** bumped to 1.13.2 for bootstrap container
+
 ## [1.5.1] - 2026-03-14
 
 ### Added
@@ -748,7 +809,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uTLS fingerprint spoofing (Chrome)
 - Automatic short ID generation for Reality
 
-[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/shayanb/MoaV/compare/v1.6.0...v1.6.1
+[1.6.0]: https://github.com/shayanb/MoaV/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/shayanb/MoaV/compare/v1.4.7...v1.5.1
 [1.4.7]: https://github.com/shayanb/MoaV/compare/v1.4.5...v1.4.7
 [1.4.5]: https://github.com/shayanb/MoaV/compare/v1.4.4...v1.4.5

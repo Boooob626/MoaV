@@ -10,6 +10,8 @@ import subprocess
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from collections import defaultdict
+from geoip import GeoIPLookup
 
 # Metrics storage
 metrics = {
@@ -23,6 +25,9 @@ metrics_lock = threading.Lock()
 # Peer name mapping (from config file)
 peer_names = {}  # public_key -> name
 
+# GeoIP lookup
+geoip = GeoIPLookup()
+
 
 def load_peer_names():
     """Load peer names from wireguard config."""
@@ -31,14 +36,13 @@ def load_peer_names():
         with open('/etc/wireguard/wg0.conf', 'r') as f:
             content = f.read()
 
-        # Parse config for peer names (comments before [Peer] sections)
         current_name = None
         for line in content.split('\n'):
             line = line.strip()
             if line.startswith('# ') and not line.startswith('# ='):
                 current_name = line[2:].strip()
             elif line == '[Peer]':
-                pass  # Next line with PublicKey will use current_name
+                pass
             elif line.startswith('PublicKey') and current_name:
                 pubkey = line.split('=', 1)[1].strip()
                 peer_names[pubkey] = current_name
@@ -80,11 +84,9 @@ def parse_wg_show(output: str):
             elif line.startswith('allowed ips:'):
                 peers[current_peer]['allowed_ips'] = line.split(':', 1)[1].strip()
             elif line.startswith('latest handshake:'):
-                # Parse "X minutes, Y seconds ago" or "X seconds ago"
                 hs_str = line.split(':', 1)[1].strip()
                 peers[current_peer]['latest_handshake'] = parse_handshake_time(hs_str)
             elif line.startswith('transfer:'):
-                # Parse "123.45 KiB received, 678.90 KiB sent"
                 transfer_str = line.split(':', 1)[1].strip()
                 rx, tx = parse_transfer(transfer_str)
                 peers[current_peer]['transfer_rx'] = rx
@@ -99,7 +101,6 @@ def parse_handshake_time(hs_str: str) -> int:
         return 0
 
     total_seconds = 0
-    # Match patterns like "1 minute, 30 seconds ago" or "45 seconds ago"
     parts = re.findall(r'(\d+)\s*(second|minute|hour|day)s?', hs_str)
     for value, unit in parts:
         value = int(value)
@@ -120,7 +121,6 @@ def parse_transfer(transfer_str: str) -> tuple:
     rx_bytes = 0
     tx_bytes = 0
 
-    # Match "123.45 KiB received, 678.90 MiB sent"
     rx_match = re.search(r'([\d.]+)\s*(B|KiB|MiB|GiB|TiB)\s*received', transfer_str)
     tx_match = re.search(r'([\d.]+)\s*(B|KiB|MiB|GiB|TiB)\s*sent', transfer_str)
 
@@ -132,6 +132,15 @@ def parse_transfer(transfer_str: str) -> tuple:
         tx_bytes = int(float(tx_match.group(1)) * multipliers.get(tx_match.group(2), 1))
 
     return rx_bytes, tx_bytes
+
+
+def extract_ip_from_endpoint(endpoint: str) -> str:
+    """Extract IP from endpoint string (IP:port format)."""
+    if not endpoint:
+        return ""
+    # Handle IPv4:port
+    parts = endpoint.rsplit(':', 1)
+    return parts[0] if parts else ""
 
 
 def collect_metrics():
@@ -150,6 +159,11 @@ def collect_metrics():
 
         interface, peers = parse_wg_show(result.stdout)
 
+        # Add country to each peer
+        for pubkey, peer in peers.items():
+            ip = extract_ip_from_endpoint(peer['endpoint'])
+            peer['country'] = geoip.lookup(ip) if ip else "XX"
+
         with metrics_lock:
             metrics['interface'] = interface
             metrics['peers'] = peers
@@ -165,7 +179,7 @@ def metrics_collector():
     """Background thread to collect metrics periodically."""
     while True:
         collect_metrics()
-        time.sleep(15)  # Collect every 15 seconds
+        time.sleep(15)
 
 
 class MetricsHandler(BaseHTTPRequestHandler):
@@ -204,22 +218,31 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 output.append('# HELP wireguard_peer_active Whether peer has recent handshake (1=active)')
                 output.append('# TYPE wireguard_peer_active gauge')
 
+                country_counts = defaultdict(int)
+
                 for pubkey, peer in metrics['peers'].items():
-                    # Get friendly name if available
                     name = peer_names.get(pubkey, pubkey[:8] + '...')
-                    labels = f'public_key="{pubkey}",name="{name}"'
+                    country = peer.get('country', 'XX')
+                    labels = f'public_key="{pubkey}",name="{name}",country="{country}"'
 
                     output.append(f'wireguard_peer_transfer_rx_bytes{{{labels}}} {peer["transfer_rx"]}')
                     output.append(f'wireguard_peer_transfer_tx_bytes{{{labels}}} {peer["transfer_tx"]}')
 
                     if peer['latest_handshake'] > 0:
                         output.append(f'wireguard_peer_latest_handshake_seconds{{{labels}}} {peer["latest_handshake"]}')
-                        # Active if handshake within last 3 minutes
                         is_active = 1 if (time.time() - peer['latest_handshake']) < 180 else 0
                         output.append(f'wireguard_peer_active{{{labels}}} {is_active}')
+                        if is_active:
+                            country_counts[country] += 1
                     else:
                         output.append(f'wireguard_peer_latest_handshake_seconds{{{labels}}} 0')
                         output.append(f'wireguard_peer_active{{{labels}}} 0')
+
+                # Active peers by country
+                output.append('# HELP wireguard_active_peers_by_country Active peers by source country')
+                output.append('# TYPE wireguard_active_peers_by_country gauge')
+                for country, count in sorted(country_counts.items()):
+                    output.append(f'wireguard_active_peers_by_country{{country="{country}"}} {count}')
 
                 # Last update timestamp
                 output.append('# HELP wireguard_last_update_timestamp Unix timestamp of last successful update')

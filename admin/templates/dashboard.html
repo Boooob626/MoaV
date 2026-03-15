@@ -401,6 +401,36 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* Collapsible sections */
+        .collapse-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .collapse-btn:hover { color: var(--text); border-color: var(--text-dim); }
+        .section-summary {
+            display: none;
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            padding: 0.5rem 1rem;
+            color: var(--text-dim);
+            gap: 1.5rem;
+        }
+        .section-summary .stat-val { color: var(--text); font-weight: 600; }
+        .section-summary .stat-val.green { color: var(--green); }
+        .section-summary .stat-val.blue { color: var(--blue); }
+        .section-summary .stat-val.yellow { color: var(--yellow); }
+        .section.collapsed .section-body,
+        .section.collapsed .create-panel { display: none !important; }
+        .section.collapsed .section-summary { display: flex; }
+        .section.collapsed .section-head { border-bottom: none; }
+
         /* MahsaNet donation */
         .mahsa-stats {
             display: flex;
@@ -461,15 +491,22 @@
         }
         .btn-del {
             background: none;
-            border: 1px solid var(--red);
-            color: var(--red);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
             padding: 0.15rem 0.4rem;
             border-radius: 3px;
             cursor: pointer;
             font-family: var(--mono);
             font-size: 0.6rem;
+            transition: all 0.15s;
         }
-        .btn-del:hover { background: var(--red-dim); }
+        .btn-del:hover { color: var(--red); border-color: var(--red); }
+        .btn-del.confirming {
+            background: var(--red);
+            border-color: var(--red);
+            color: #fff;
+            font-weight: 700;
+        }
         .badge-active {
             color: var(--green);
             background: var(--green-dim);
@@ -489,17 +526,21 @@
 
         /* Footer */
         .footer {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 0.6rem;
-            padding: 1.25rem 0 0.5rem;
+            padding: 1.25rem 1rem 0.75rem;
             margin-top: 0.5rem;
             border-top: 1px solid var(--border);
             font-family: var(--mono);
             font-size: 0.65rem;
             color: var(--text-dim);
         }
+        .footer-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+        }
+        .footer-row + .footer-row { margin-top: 0.4rem; }
         .footer a {
             color: var(--text-dim);
             text-decoration: none;
@@ -509,6 +550,36 @@
         }
         .footer a:hover { color: var(--text); }
         .footer-sep { opacity: 0.4; }
+        .footer-info { color: var(--text-dim); opacity: 0.7; }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .toast {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            padding: 0.6rem 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            max-width: 360px;
+            animation: toast-in 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .toast.error { border-color: var(--red); background: var(--red-dim); }
+        .toast.success { border-color: var(--green); background: var(--green-dim); }
+        .toast.warn { border-color: var(--yellow); background: var(--yellow-dim); }
+        @keyframes toast-in { from { opacity: 0; transform: translateX(1rem); } to { opacity: 1; transform: translateX(0); } }
 
         /* Responsive */
         @media (max-width: 640px) {
@@ -521,6 +592,7 @@
     </style>
 </head>
 <body>
+    <div class="toast-container" id="toast-container"></div>
     <div class="shell">
         <div class="topbar">
             <h1><img src="/logo.png" alt="" class="logo">MoaV</h1>
@@ -547,32 +619,34 @@
 
         <!-- Stats -->
         <div class="stats">
-            {% if not error %}
+            <div class="stat">
+                <div class="stat-label">Active Users</div>
+                <div class="stat-val">{{ agg_stats.active_users }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Users</div>
+                <div class="stat-val">{{ all_users|length }}</div>
+            </div>
             <div class="stat">
                 <div class="stat-label">Connections</div>
-                <div class="stat-val">{{ active_connections }}</div>
+                <div class="stat-val">{{ agg_stats.total_connections }}</div>
             </div>
+            {% if not error %}
             <div class="stat">
-                <div class="stat-label">Upload</div>
-                <div class="stat-val">{{ total_upload }}</div>
+                <div class="stat-label">Proxy ↑ / ↓</div>
+                <div class="stat-val" style="font-size:0.95rem;">{{ total_upload }}<span style="color:var(--text-dim);font-size:0.7rem;"> / </span>{{ total_download }}</div>
             </div>
+            {% endif %}
+            {% if agg_stats.protocols.xray.upload or agg_stats.protocols.xray.download %}
             <div class="stat">
-                <div class="stat-label">Download</div>
-                <div class="stat-val">{{ total_download }}</div>
+                <div class="stat-label">Xray ↑ / ↓</div>
+                <div class="stat-val" style="font-size:0.95rem;">{{ format_bytes(agg_stats.protocols.xray.upload) }}<span style="color:var(--text-dim);font-size:0.7rem;"> / </span>{{ format_bytes(agg_stats.protocols.xray.download) }}</div>
             </div>
             {% endif %}
             {% if conduit_stats.running %}
             <div class="stat">
-                <div class="stat-label">Conduit</div>
-                <div class="stat-val ok">Active</div>
-            </div>
-            <div class="stat">
-                <div class="stat-label">Conduit Up</div>
-                <div class="stat-val">{{ conduit_stats.bandwidth.upload }}</div>
-            </div>
-            <div class="stat">
-                <div class="stat-label">Conduit Down</div>
-                <div class="stat-val">{{ conduit_stats.bandwidth.download }}</div>
+                <div class="stat-label">Conduit ↑ / ↓</div>
+                <div class="stat-val ok" style="font-size:0.95rem;">{{ conduit_stats.bandwidth.upload }}<span style="color:var(--text-dim);font-size:0.7rem;"> / </span>{{ conduit_stats.bandwidth.download }}</div>
             </div>
             {% endif %}
         </div>
@@ -619,13 +693,19 @@
 
         <!-- MahsaNet Donation -->
         {% if mahsanet_configured %}
-        <div class="section">
+        <div class="section" id="mahsa-section">
             <div class="section-head">
                 <h2>MahsaNet</h2>
                 <div style="display:flex;gap:0.5rem;">
+                    <button class="collapse-btn" onclick="toggleSection('mahsa-section')">collapse</button>
                     <button class="btn" onclick="loadMahsanetConfigs()">Refresh</button>
                     <button class="btn btn-green" onclick="toggleDonatePanel()">+ Donate</button>
                 </div>
+            </div>
+            <div class="section-summary">
+                <span><span class="stat-label">Total:</span><span class="stat-val blue" id="mahsa-total-s">-</span></span>
+                <span><span class="stat-label">Active:</span><span class="stat-val green" id="mahsa-active-s">-</span></span>
+                <span><span class="stat-label">Inactive:</span><span class="stat-val yellow" id="mahsa-inactive-s">-</span></span>
             </div>
             <div id="donate-panel" class="create-panel">
                 <form class="donate-form" onsubmit="return donateMahsanet(event)">
@@ -674,10 +754,25 @@
         {% endif %}
 
         <!-- Users -->
-        <div class="section">
+        <div class="section" id="users-section">
             <div class="section-head">
                 <h2>Users</h2>
-                <button class="btn btn-green" onclick="toggleCreatePanel()">+ New</button>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="collapse-btn" onclick="toggleSection('users-section')">collapse</button>
+                    <button class="btn btn-green" onclick="toggleCreatePanel()">+ New</button>
+                </div>
+            </div>
+            <div class="section-summary">
+                <span><span class="stat-val blue">{{ all_users|length }}</span> users</span>
+                {% if all_users %}
+                <span><span class="stat-val green">{{ all_users|selectattr('has_reality')|list|length }}</span> Reality</span>
+                <span><span class="stat-val green">{{ all_users|selectattr('has_hysteria2')|list|length }}</span> Hy2</span>
+                <span><span class="stat-val green">{{ all_users|selectattr('has_wireguard')|list|length }}</span> WG</span>
+                <span><span class="stat-val green">{{ all_users|selectattr('has_amneziawg')|list|length }}</span> AWG</span>
+                {% if all_users|selectattr('is_donated')|list|length > 0 %}
+                <span><span class="stat-val yellow">{{ all_users|selectattr('is_donated')|list|length }}</span> donated</span>
+                {% endif %}
+                {% endif %}
             </div>
             <div id="create-panel" class="create-panel">
                 <form class="create-form" onsubmit="return createUser(event)">
@@ -698,6 +793,7 @@
                 </form>
                 <div id="create-result" class="create-result"></div>
             </div>
+            <div class="section-body">
             {% if all_users %}
             <table>
                 <thead>
@@ -736,21 +832,49 @@
             {% else %}
             <div class="empty-msg">No users yet. Create one above or run <code>moav user add</code></div>
             {% endif %}
+            </div>
         </div>
 
         <footer class="footer">
-            <a href="https://moav.sh" target="_blank">MoaV.sh</a>
-            <span class="footer-sep">|</span>
-            <span>v{{ current_version }}</span>
-            <span class="footer-sep">|</span>
-            <a href="https://github.com/shayanb/MoaV" target="_blank" title="GitHub">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-            </a>
+            <div class="footer-row">
+                <a href="https://moav.sh" target="_blank">MoaV.sh</a>
+                <span class="footer-sep">|</span>
+                <a href="https://moav.sh/docs" target="_blank">Documentations</a>
+                <span class="footer-sep">|</span>
+                <a href="https://github.com/shayanb/MoaV" target="_blank" title="GitHub">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                </a>
+                <span class="footer-sep">|</span>
+                <a href="https://github.com/shayanb/MoaV/issues" target="_blank">Issues</a>
+            </div>
+            <div class="footer-row footer-info">
+                <span>v{{ current_version }}</span>
+                {% if server_ip %}<span class="footer-sep">|</span><span title="Click to copy" style="cursor:pointer" onclick="navigator.clipboard.writeText('{{ server_ip }}')">{{ server_ip.split('.')[0] }}.***.***.{{ server_ip.split('.')[-1] }}</span>{% endif %}
+                {% if domain %}<span class="footer-sep">|</span><span>{{ domain }}</span>{% endif %}
+                <span class="footer-sep">|</span>
+                <span id="footer-uptime" data-seconds="{{ uptime_seconds }}">up {{ uptime_seconds // 86400 }}d {{ (uptime_seconds % 86400) // 3600 }}h</span>
+            </div>
         </footer>
     </div>
 
     <script>
         let panelOpen = false;
+
+        function toast(msg, type = 'error', duration = 4000) {
+            const container = document.getElementById('toast-container');
+            const el = document.createElement('div');
+            el.className = 'toast ' + type;
+            el.textContent = msg;
+            container.appendChild(el);
+            setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }, duration);
+        }
+
+        function toggleSection(id) {
+            const section = document.getElementById(id);
+            const btn = section.querySelector('.collapse-btn');
+            section.classList.toggle('collapsed');
+            btn.textContent = section.classList.contains('collapsed') ? 'expand' : 'collapse';
+        }
 
         function toggleCreatePanel() {
             const panel = document.getElementById('create-panel');
@@ -787,8 +911,8 @@
             const btn = document.getElementById('create-btn');
             const result = document.getElementById('create-result');
 
-            if (!username) { alert('Enter a username'); return false; }
-            if (batchOn && batch < 1) { alert('Enter a batch count'); return false; }
+            if (!username) { toast('Enter a username', 'warn'); return false; }
+            if (batchOn && batch < 1) { toast('Enter a batch count', 'warn'); return false; }
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Creating...';
@@ -845,8 +969,8 @@
             const protocols = Array.from(checked).map(c => c.value);
             const btn = document.getElementById('donate-btn');
 
-            if (!prefix) { alert('Enter a prefix'); return false; }
-            if (protocols.length === 0) { alert('Select at least one protocol'); return false; }
+            if (!prefix) { toast('Enter a prefix', 'warn'); return false; }
+            if (protocols.length === 0) { toast('Select at least one protocol', 'warn'); return false; }
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Donating...';
@@ -886,6 +1010,9 @@
                     document.getElementById('mahsa-total').textContent = status.total;
                     document.getElementById('mahsa-active').textContent = status.active;
                     document.getElementById('mahsa-inactive').textContent = status.inactive;
+                    document.getElementById('mahsa-total-s').textContent = status.total;
+                    document.getElementById('mahsa-active-s').textContent = status.active;
+                    document.getElementById('mahsa-inactive-s').textContent = status.inactive;
                 }
 
                 /* Load configs */
@@ -903,10 +1030,10 @@
                     <tr>
                         <td><div class="config-url" title="${c.url}">${c.url}</div></td>
                         <td><span class="${c.is_active ? 'badge-active' : 'badge-inactive'}">${c.is_active ? 'active' : 'inactive'}</span></td>
-                        <td style="font-family:var(--mono);font-size:0.7rem;">${c.health_status_percent || '—'}</td>
+                        <td style="font-family:var(--mono);font-size:0.7rem;">${typeof c.health_status_percent === 'number' ? c.health_status_percent + '%' : (typeof c.health_status_percent === 'string' ? c.health_status_percent + '%' : '—')}</td>
                         <td style="font-family:var(--mono);font-size:0.7rem;">${c.num_consumed || 0}</td>
                         <td style="text-align:right;">
-                            <button class="btn-del" onclick="deleteMahsaConfig('${c.hash}')">del</button>
+                            <button class="btn-del" onclick="confirmDel(this, '${c.id || c.hash}')">del</button>
                         </td>
                     </tr>
                 `).join('');
@@ -915,21 +1042,48 @@
             }
         }
 
+        function confirmDel(btn, id) {
+            if (btn.dataset.confirmed) {
+                deleteMahsaConfig(id);
+                return;
+            }
+            btn.dataset.confirmed = '1';
+            btn.textContent = 'sure?';
+            btn.classList.add('confirming');
+            setTimeout(() => {
+                btn.textContent = 'del';
+                btn.classList.remove('confirming');
+                delete btn.dataset.confirmed;
+            }, 3000);
+        }
+
         async function deleteMahsaConfig(hash) {
-            if (!confirm('Remove this config from MahsaNet?')) return;
             try {
                 const resp = await fetch(`/api/mahsanet/configs/${hash}`, { method: 'DELETE' });
                 if (resp.ok) {
                     loadMahsanetConfigs();
                 } else {
-                    alert('Failed to delete config');
+                    const err = await resp.json().catch(() => ({}));
+                    toast(err.detail || `Failed to delete config (HTTP ${resp.status})`);
                 }
             } catch (e) {
-                alert('Error: ' + e.message);
+                toast('Error: ' + e.message);
             }
         }
 
         {% endif %}
+
+        // Live uptime counter
+        (function() {
+            const el = document.getElementById('footer-uptime');
+            if (!el) return;
+            let secs = parseInt(el.dataset.seconds) || 0;
+            function fmt(s) {
+                const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+                return 'up ' + (d > 0 ? d + 'd ' : '') + h + 'h ' + m + 'm';
+            }
+            setInterval(() => { secs += 60; el.textContent = fmt(secs); }, 60000);
+        })();
     </script>
 </body>
 </html>

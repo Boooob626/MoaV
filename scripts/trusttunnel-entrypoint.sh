@@ -3,6 +3,7 @@
 set -e
 
 CONFIG_DIR="/etc/trusttunnel"
+RUNTIME_DIR="/tmp/trusttunnel"
 LOG_LEVEL="${LOG_LEVEL:-info}"
 
 echo "[TrustTunnel] Starting TrustTunnel VPN endpoint..."
@@ -22,6 +23,12 @@ if [[ ! -f "$CONFIG_DIR/credentials.toml" ]]; then
     echo "[TrustTunnel] ERROR: credentials.toml not found in $CONFIG_DIR"
     exit 1
 fi
+
+# Copy configs to writable location (source may be read-only mount)
+mkdir -p "$RUNTIME_DIR"
+cp "$CONFIG_DIR/vpn.toml" "$RUNTIME_DIR/vpn.toml"
+cp "$CONFIG_DIR/hosts.toml" "$RUNTIME_DIR/hosts.toml"
+cp "$CONFIG_DIR/credentials.toml" "$RUNTIME_DIR/credentials.toml"
 
 # Wait for certificates to be available
 CERT_WAIT_TIMEOUT=60
@@ -45,14 +52,31 @@ if [[ -n "$DOMAIN" ]]; then
 fi
 
 echo "[TrustTunnel] Configuration:"
-echo "  - Config: $CONFIG_DIR/vpn.toml"
-echo "  - Hosts: $CONFIG_DIR/hosts.toml"
-echo "  - Credentials: $CONFIG_DIR/credentials.toml"
+echo "  - Config: $RUNTIME_DIR/vpn.toml"
+echo "  - Hosts: $RUNTIME_DIR/hosts.toml"
+echo "  - Credentials: $RUNTIME_DIR/credentials.toml"
 echo "  - Log level: $LOG_LEVEL"
 
-# Start TrustTunnel endpoint
+# Fix volume ownership (volumes may be root-owned from previous runs)
+chown -R moav:moav /state /var/log/trusttunnel 2>/dev/null || true
+
+# Copy certs to a moav-readable location (originals are root:root 600, volume is read-only)
+if [[ -d /certs/live ]]; then
+    for d in /certs/live/*/; do
+        dir="/tmp/certs/live/$(basename "$d")"
+        mkdir -p "$dir"
+        cp -rL "$d"* "$dir/" 2>/dev/null || true
+    done
+fi
+chown -R moav:moav /tmp/certs 2>/dev/null || true
+
+# Rewrite cert paths in runtime config to use the moav-readable copy
+sed -i 's|/certs/|/tmp/certs/|g' "$RUNTIME_DIR/hosts.toml"
+chown -R moav:moav "$RUNTIME_DIR"
+
+# Start TrustTunnel endpoint as non-root
 cd /opt/trusttunnel
-exec ./trusttunnel_endpoint \
+exec gosu moav ./trusttunnel_endpoint \
     --loglvl "$LOG_LEVEL" \
-    "$CONFIG_DIR/vpn.toml" \
-    "$CONFIG_DIR/hosts.toml"
+    "$RUNTIME_DIR/vpn.toml" \
+    "$RUNTIME_DIR/hosts.toml"

@@ -1572,8 +1572,13 @@ run_bootstrap() {
         fi
     fi
 
-    info "Building bootstrap container..."
-    docker compose --profile setup build bootstrap
+    # Only build if the bootstrap image doesn't exist yet
+    if ! docker image inspect moav-bootstrap >/dev/null 2>&1; then
+        info "Building bootstrap container (first time, may take a minute)..."
+        docker compose --profile setup build bootstrap
+    else
+        info "Using cached bootstrap container"
+    fi
 
     echo ""
     info "Running bootstrap..."
@@ -1588,6 +1593,12 @@ run_bootstrap() {
         echo "  • Check that required ports are available"
         return 1
     fi
+
+    # Download GeoIP database for country-level monitoring (best-effort)
+    info "Downloading GeoIP database..."
+    docker compose --profile setup run --rm geoip-updater 2>/dev/null && \
+        success "GeoIP database ready" || \
+        warn "GeoIP download failed (monitoring will work without country data)"
 
     echo ""
     success "Bootstrap completed!"
@@ -2345,7 +2356,8 @@ ensure_clash_api_secret() {
 
     # .env is empty — first-time monitoring setup
     # If using 'all' profile, ask user if they want to enable monitoring (requires 2GB RAM)
-    if [[ -z "$current_secret" ]]; then
+    # Skip if user already confirmed monitoring above (ENABLE_MONITORING was false -> set to true)
+    if [[ -z "$current_secret" ]] && [[ "$enable_monitoring" != "false" ]]; then
         if echo "$profiles" | grep -qE "\ball\b|--profile all"; then
             echo ""
             warn "Monitoring requires at least 2GB RAM to run properly."
@@ -3031,7 +3043,7 @@ show_usage() {
     echo "  user add NAME [NAME2...] [-p]  Add user(s) (--package creates zip)"
     echo "  user add --batch N [--prefix P]  Create N users (e.g., user01, user02...)"
     echo "  admin password        Reset admin dashboard password"
-    echo "  donate mahsanet       Donate configs to MahsaServer.com"
+    echo "  donate                Donate VPN configs to help bypass censorship"
     echo "  user revoke NAME      Revoke a user"
     echo "  user package NAME     Create distributable zip for existing user"
     echo "  build [SERVICE|PROFILE] [--no-cache]  Build services or profile"
@@ -3074,7 +3086,7 @@ show_usage() {
     echo "  moav test joe                  # Test connectivity for user joe"
     echo "  moav test joe -v               # Test with verbose output for debugging"
     echo "  moav client connect joe        # Connect as user joe (exposes proxy)"
-    echo "  moav donate mahsanet           # Donate configs to MahsaServer.com"
+    echo "  moav donate                    # Donate configs to MahsaServer.com"
     echo ""
     echo "Migration:"
     echo "  moav export                    # Backup to moav-backup-TIMESTAMP.tar.gz"
@@ -3287,20 +3299,123 @@ cmd_donate_mahsanet_list() {
         return 0
     fi
 
-    printf "  %-42s %-10s %6s  %4s\n" "URL" "Status" "Health" "Used"
-    echo "  $(printf '%.0s─' {1..70})"
+    printf "  %3s  %-38s %-10s %6s  %4s\n" "#" "URL" "Status" "Health" "Used"
+    echo "  $(printf '%.0s─' {1..74})"
 
+    local i=1
     echo "$body" | jq -r '.results[] | [
-        (.url[:38] + (if (.url | length) > 38 then ".." else "" end)),
+        (.url[:34] + (if (.url | length) > 34 then ".." else "" end)),
         (if .is_active then "active" else "inactive" end),
-        (if .health_status_percent != null then (.health_status_percent | tostring) + "%" else "—" end),
+        (if .health_status_percent == null then "—" elif (.health_status_percent | type) == "number" then (.health_status_percent | tostring) + "%" elif (.health_status_percent | type) == "string" then .health_status_percent + "%" else "—" end),
         (.num_consumed // 0 | tostring)
     ] | @tsv' 2>/dev/null | while IFS=$'\t' read -r url status health used; do
-        printf "  %-42s %-10s %6s  %4s\n" "$url" "$status" "$health" "$used"
+        printf "  %3s  %-38s %-10s %6s  %4s\n" "$i" "$url" "$status" "$health" "$used"
+        i=$((i + 1))
     done
 
     echo ""
     info "Total: $count config(s)"
+    echo -e "  ${DIM}To delete specific configs: moav donate delete${NC}"
+}
+
+cmd_donate_mahsanet_delete() {
+    local api_key="$1"
+
+    # Get all configs
+    local response
+    response=$(mahsanet_api_call "GET" "?limit=100" "" "$api_key")
+    local http_code
+    http_code=$(echo "$response" | tail -1)
+    local body
+    body=$(echo "$response" | sed '$d')
+
+    if [[ "$http_code" != "200" ]]; then
+        error "Failed to fetch configs (HTTP $http_code)"
+        return 1
+    fi
+
+    local count
+    count=$(echo "$body" | jq -r '.count // 0')
+
+    if [[ "$count" == "0" ]]; then
+        info "No configs to delete."
+        return 0
+    fi
+
+    # Show numbered list
+    echo ""
+    printf "  %3s  %-48s %-10s\n" "#" "URL" "Status"
+    echo "  $(printf '%.0s─' {1..68})"
+
+    local i=1
+    echo "$body" | jq -r '.results[] | [
+        (.url[:44] + (if (.url | length) > 44 then ".." else "" end)),
+        (if .is_active then "active" else "inactive" end)
+    ] | @tsv' 2>/dev/null | while IFS=$'\t' read -r url status; do
+        printf "  %3s  %-48s %-10s\n" "$i" "$url" "$status"
+        i=$((i + 1))
+    done
+    echo ""
+
+    echo -n "  Enter numbers to delete (e.g. 1 3 5, or 'all'): "
+    read -r selection
+
+    if [[ -z "$selection" ]]; then
+        info "Cancelled."
+        return 0
+    fi
+
+    # Build list of ids to delete
+    local ids_json
+    ids_json=$(echo "$body" | jq -r '[.results[] | (.id // .hash)]')
+
+    local to_delete=()
+    if [[ "$selection" == "all" ]]; then
+        while IFS= read -r id; do
+            to_delete+=("$id")
+        done < <(echo "$ids_json" | jq -r '.[]')
+    else
+        for num in $selection; do
+            local idx=$((num - 1))
+            local id
+            id=$(echo "$ids_json" | jq -r ".[$idx] // empty")
+            if [[ -n "$id" ]]; then
+                to_delete+=("$id")
+            else
+                warn "Invalid number: $num"
+            fi
+        done
+    fi
+
+    if [[ ${#to_delete[@]} -eq 0 ]]; then
+        info "Nothing to delete."
+        return 0
+    fi
+
+    warn "Will delete ${#to_delete[@]} config(s) from MahsaNet."
+    if ! confirm "Are you sure?" "n"; then
+        info "Cancelled."
+        return 0
+    fi
+
+    local removed=0
+    local failed=0
+    for id in "${to_delete[@]}"; do
+        local del_response
+        del_response=$(mahsanet_api_call "DELETE" "${id}/" "" "$api_key")
+        local del_code
+        del_code=$(echo "$del_response" | tail -1)
+        if [[ "$del_code" == "204" || "$del_code" == "200" ]]; then
+            removed=$((removed + 1))
+        else
+            failed=$((failed + 1))
+            warn "Failed to remove config $id (HTTP $del_code)"
+        fi
+    done
+
+    echo ""
+    success "Removed $removed config(s) from MahsaNet"
+    [[ $failed -gt 0 ]] && warn "$failed config(s) failed to remove"
 }
 
 cmd_donate_mahsanet_status() {
@@ -3370,7 +3485,7 @@ cmd_donate_mahsanet_remove() {
     fi
 
     local ids
-    ids=$(echo "$body" | jq -r '.results[].hash')
+    ids=$(echo "$body" | jq -r '.results[] | (.id // .hash)')
     local removed=0
     local failed=0
 
@@ -3397,71 +3512,18 @@ cmd_donate_mahsanet_remove() {
     [[ $failed -gt 0 ]] && warn "$failed config(s) failed to remove"
 }
 
-cmd_donate_mahsanet() {
-    local action=""
-
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --setup)   action="setup"; shift ;;
-            --list)    action="list"; shift ;;
-            --status)  action="status"; shift ;;
-            --remove)  action="remove"; shift ;;
-            --help|-h) action="help"; shift ;;
-            *)         shift ;;
-        esac
-    done
-
-    if [[ "$action" == "help" ]]; then
-        echo "Usage: moav donate mahsanet [options]"
-        echo ""
-        echo "Donate VPN configs to MahsaServer.com (Mahsa VPN, 2M+ users in Iran)"
-        echo ""
-        echo "Options:"
-        echo "  (none)      Generate users and donate configs"
-        echo "  --setup     Set up MahsaNet API key"
-        echo "  --list      List donated configs"
-        echo "  --status    Show donation status"
-        echo "  --remove    Remove all donated configs"
-        echo "  --help      Show this help message"
-        echo ""
-        echo "Configuration (.env):"
-        echo "  MAHSANET_API_KEY         API key from mahsaserver.com/user/api"
-        echo "  MAHSANET_PROTOCOLS       Protocols to donate (default: reality hysteria2)"
-        echo "  MAHSANET_POOL            Pool name (default: mahsa)"
-        echo ""
-        echo "Examples:"
-        echo "  moav donate mahsanet --setup      # Configure API key"
-        echo "  moav donate mahsanet              # Generate users and donate"
-        echo "  moav donate mahsanet --list       # List donated configs"
-        echo "  moav donate mahsanet --remove     # Remove all donated configs"
-        return 0
-    fi
-
-    # Setup doesn't need API key validation
-    if [[ "$action" == "setup" ]]; then
-        cmd_donate_mahsanet_setup
-        return
-    fi
-
-    # All other actions need a valid API key
+_get_donate_api_key() {
     local api_key=""
     if [[ -f ".env" ]]; then
         api_key=$(grep -E "^MAHSANET_API_KEY=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
     fi
-
     if [[ -z "$api_key" ]]; then
-        error "MahsaNet API key not configured"
+        error "No donation service configured"
         echo ""
-        echo "  Run: moav donate mahsanet --setup"
+        echo "  Run: moav donate setup"
         return 1
     fi
-
-    case "$action" in
-        list)   cmd_donate_mahsanet_list "$api_key" ;;
-        status) cmd_donate_mahsanet_status "$api_key" ;;
-        remove) cmd_donate_mahsanet_remove "$api_key" ;;
-        *)      cmd_donate_mahsanet_donate "$api_key" ;;
-    esac
+    echo "$api_key"
 }
 
 cmd_donate_mahsanet_donate() {
@@ -3649,25 +3711,83 @@ cmd_donate_mahsanet_donate() {
 }
 
 cmd_donate() {
-    local service="${1:-}"
+    local action="${1:-}"
     shift 1 2>/dev/null || shift $#
 
-    case "$service" in
-        mahsanet|mahsa)
-            cmd_donate_mahsanet "$@"
+    case "$action" in
+        setup|--setup)
+            cmd_donate_mahsanet_setup
             ;;
-        *)
-            echo "Usage: moav donate <service> [options]"
+        list|--list)
+            local key; key=$(_get_donate_api_key) || return 1
+            cmd_donate_mahsanet_list "$key"
+            ;;
+        status|--status)
+            local key; key=$(_get_donate_api_key) || return 1
+            cmd_donate_mahsanet_status "$key"
+            ;;
+        delete|--delete)
+            local key; key=$(_get_donate_api_key) || return 1
+            cmd_donate_mahsanet_delete "$key"
+            ;;
+        remove|--remove)
+            local key; key=$(_get_donate_api_key) || return 1
+            cmd_donate_mahsanet_remove "$key"
+            ;;
+        help|--help|-h)
+            echo "Usage: moav donate [command]"
             echo ""
-            echo "Services:"
-            echo "  mahsanet    Donate configs to MahsaServer.com (Mahsa VPN, 2M+ users)"
+            echo "Donate VPN configs to help people bypass censorship."
             echo ""
             echo "Commands:"
-            echo "  moav donate mahsanet              Generate users and donate configs"
-            echo "  moav donate mahsanet --setup      Set up MahsaNet API key"
-            echo "  moav donate mahsanet --list       List donated configs"
-            echo "  moav donate mahsanet --status     Show donation status"
-            echo "  moav donate mahsanet --remove     Remove all donated configs"
+            echo "  (none)     Interactive donation wizard"
+            echo "  setup      Configure donation service API keys"
+            echo "  list       List donated configs"
+            echo "  status     Show donation statistics"
+            echo "  delete     Select and delete specific configs"
+            echo "  remove     Remove all donated configs"
+            echo "  help       Show this help"
+            echo ""
+            echo "Services:"
+            echo "  MahsaNet   mahsaserver.com — Mahsa VPN (2M+ users in Iran)"
+            echo ""
+            echo "Configuration (.env):"
+            echo "  MAHSANET_API_KEY         API token from mahsaserver.com/user/api"
+            echo "  MAHSANET_PROTOCOLS       Protocols to donate (default: reality hysteria2)"
+            echo "  MAHSANET_POOL            Pool name (default: mahsa)"
+            echo ""
+            echo "Examples:"
+            echo "  moav donate              Start donation wizard"
+            echo "  moav donate setup        Configure MahsaNet API key"
+            echo "  moav donate list         Show all donated configs"
+            echo "  moav donate delete       Remove specific configs"
+            ;;
+        *)
+            # Wizard flow: check configured services and donate
+            local api_key=""
+            if [[ -f ".env" ]]; then
+                api_key=$(grep -E "^MAHSANET_API_KEY=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
+            fi
+
+            if [[ -z "$api_key" ]]; then
+                print_section "Donate VPN Configs"
+                echo ""
+                echo "  Donate VPN configs to help people bypass internet censorship."
+                echo ""
+                echo "  Available services:"
+                echo -e "    ${DIM}○${NC} MahsaNet (mahsaserver.com) — ${DIM}not configured${NC}"
+                echo ""
+                echo -e "  Run ${CYAN}moav donate setup${NC} to configure a donation service."
+                return 0
+            fi
+
+            # Auto-select MahsaNet (only configured service)
+            print_section "Donate VPN Configs"
+            echo ""
+            echo -e "  Service: ${GREEN}MahsaNet${NC} (mahsaserver.com — 2M+ users in Iran)"
+            echo ""
+
+            cmd_donate_mahsanet_donate "$api_key"
             ;;
     esac
 }
@@ -4003,8 +4123,12 @@ cmd_start() {
         profiles="--profile proxy --profile wireguard --profile dnstunnel --profile trusttunnel --profile admin --profile conduit --profile snowflake"
     fi
 
-    # Check port 53 if DNS tunnels are being started
-    if echo "$profiles" | grep -qE "dnstunnel|all"; then
+    # Check port 53 if DNS tunnels are being started AND enabled
+    local dnstt_enabled
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "true")
+    local slipstream_enabled
+    slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "false")
+    if echo "$profiles" | grep -qE "dnstunnel|all" && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
         if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
             echo ""
             warn "Port 53 is in use (likely by systemd-resolved)"

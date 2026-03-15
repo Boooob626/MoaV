@@ -15,6 +15,7 @@ volumes:
   moav_grafana:
   moav_snowflake_logs:
   moav_webroot:
+  moav_geoip:
 
 services:
   # ===========================================================================
@@ -157,9 +158,6 @@ services:
       - DNSTT_DOMAIN=${DNSTT_SUBDOMAIN:-t}.${DOMAIN}
       - DNSTT_UPSTREAM=sing-box:1080
       - TZ=${TZ:-UTC}
-    depends_on:
-      sing-box:
-        condition: service_healthy
     profiles:
       - dnstunnel
       - all
@@ -183,9 +181,6 @@ services:
       - SLIPSTREAM_DOMAIN=${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}
       - SLIPSTREAM_UPSTREAM=sing-box:1080
       - TZ=${TZ:-UTC}
-    depends_on:
-      sing-box:
-        condition: service_healthy
     profiles:
       - dnstunnel
       - all
@@ -275,6 +270,7 @@ services:
       - "${PORT_TELEMT:-993}:993/tcp"
     expose:
       - "9090"
+      - "${TELEMT_API_PORT:-9091}"
     volumes:
       - ./configs/telemt:/etc/telemt:ro
     tmpfs:
@@ -419,6 +415,8 @@ services:
       - DOMAIN=${DOMAIN}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - TZ=${TZ:-UTC}
+    cap_add:
+      - NET_ADMIN
     depends_on:
       certbot:
         condition: service_completed_successfully
@@ -454,6 +452,24 @@ services:
   # ===========================================================================
   # ADMIN: Stats dashboard + User management API
   # ===========================================================================
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    container_name: moav-docker-proxy
+    restart: unless-stopped
+    networks:
+      - moav_net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Read-only by default; only enable what admin needs
+      - CONTAINERS=1        # docker compose ps, inspect, restart
+      - POST=1              # restart, exec create
+      - EXEC=1              # docker compose exec
+      - NETWORKS=1          # docker compose networking
+    profiles:
+      - admin
+      - all
+
   admin:
     build:
       context: .
@@ -465,17 +481,24 @@ services:
     ports:
       - "${PORT_ADMIN:-9443}:8443"
     volumes:
-      - .:/project                               # Full project for running user-add.sh
-      - /var/run/docker.sock:/var/run/docker.sock # Docker CLI for script service reloads
-      - moav_state:/state:ro                      # Dashboard reads keys from Docker volume
-      - moav_certs:/certs:ro                      # SSL certificates
+      - .:/project:ro                              # Scripts and assets (read-only)
+      - ./outputs:/project/outputs                 # User bundles (read-write for user-add.sh)
+      - ./configs:/project/configs                 # Config updates (read-write for peer addition)
+      - ./state:/project/state                     # Credential sync (read-write for user-add.sh)
+      - moav_state:/state:ro                       # Dashboard reads keys from Docker volume
+      - moav_certs:/certs:ro                       # SSL certificates
     environment:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_IP_WHITELIST=${ADMIN_IP_WHITELIST:-}
+      - SERVER_IP=${SERVER_IP:-}
+      - DOMAIN=${DOMAIN:-}
       - MAHSANET_API_KEY=${MAHSANET_API_KEY:-}
       - MAHSANET_PROTOCOLS=${MAHSANET_PROTOCOLS:-reality hysteria2}
       - MAHSANET_POOL=${MAHSANET_POOL:-mahsa}
+      - DOCKER_HOST=tcp://docker-proxy:2375
       - TZ=${TZ:-UTC}
+    depends_on:
+      - docker-proxy
     profiles:
       - admin
       - all
@@ -636,15 +659,18 @@ services:
   # Sing-box User Exporter - parses sing-box logs for user connection metrics
   singbox-exporter:
     build:
-      context: ./exporters/singbox
-      dockerfile: Dockerfile
+      context: ./exporters
+      dockerfile: singbox/Dockerfile
     container_name: moav-singbox-exporter
     restart: unless-stopped
     networks:
       - moav_net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - moav_geoip:/geoip:ro
+      - moav_state:/state:ro
     environment:
+      - CLASH_TOKEN=${CLASH_API_SECRET:-}
       - TZ=${TZ:-UTC}
     expose:
       - "9102"
@@ -653,17 +679,36 @@ services:
       - monitoring
       - all
 
+  # Telemt API Exporter - polls telemt REST API for ME pool, DC, and upstream health
+  telemt-exporter:
+    build:
+      context: ./exporters/telemt
+      dockerfile: Dockerfile
+    container_name: moav-telemt-exporter
+    restart: unless-stopped
+    networks:
+      - moav_net
+    environment:
+      - TELEMT_API_URL=http://telemt:${TELEMT_API_PORT:-9091}
+      - TZ=${TZ:-UTC}
+    expose:
+      - "9104"
+    profiles:
+      - monitoring
+      - all
+
   # Xray User Exporter - parses Xray logs for XHTTP user connection metrics
   xray-exporter:
     build:
-      context: ./exporters/xray
-      dockerfile: Dockerfile
+      context: ./exporters
+      dockerfile: xray/Dockerfile
     container_name: moav-xray-exporter
     restart: unless-stopped
     networks:
       - moav_net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
     expose:
@@ -675,8 +720,8 @@ services:
   # WireGuard Exporter - custom exporter using docker exec
   wireguard-exporter:
     build:
-      context: ./exporters/wireguard
-      dockerfile: Dockerfile
+      context: ./exporters
+      dockerfile: wireguard/Dockerfile
     container_name: moav-wireguard-exporter
     restart: unless-stopped
     networks:
@@ -684,6 +729,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./configs/wireguard:/etc/wireguard:ro
+      - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
     profiles:
@@ -693,8 +739,8 @@ services:
   # AmneziaWG Exporter - custom per-peer traffic metrics
   amneziawg-exporter:
     build:
-      context: ./exporters/amneziawg
-      dockerfile: Dockerfile
+      context: ./exporters
+      dockerfile: amneziawg/Dockerfile
     container_name: moav-amneziawg-exporter
     restart: unless-stopped
     networks:
@@ -702,11 +748,31 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./configs/amneziawg:/etc/amneziawg:ro
+      - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
     profiles:
       - monitoring
       - all
+
+  # GeoIP Database Updater - downloads DB-IP Lite country database
+  geoip-updater:
+    image: python:3.11-alpine
+    container_name: moav-geoip-updater
+    volumes:
+      - moav_geoip:/geoip
+    entrypoint: /bin/sh
+    command: >
+      -c '
+        apk add --no-cache curl > /dev/null 2>&1 &&
+        MONTH=$$(date +%Y-%m) &&
+        URL="https://download.db-ip.com/free/dbip-country-lite-$${MONTH}.mmdb.gz" &&
+        echo "Downloading GeoIP database for $${MONTH}..." &&
+        curl -fsSL "$$URL" | gunzip > /geoip/dbip-country-lite.mmdb &&
+        echo "GeoIP database updated successfully ($${MONTH})"
+      '
+    profiles:
+      - setup
 
   # ===========================================================================
   # BOOTSTRAP: First-run initialization
@@ -715,11 +781,15 @@ services:
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.bootstrap
+      args:
+        SINGBOX_VERSION: ${SINGBOX_VERSION:-1.13.2}
     container_name: moav-bootstrap
     volumes:
       - ./configs:/configs
       - ./outputs:/outputs
-      - ./scripts:/scripts:ro
+      - ./scripts/bootstrap.sh:/app/bootstrap.sh:ro
+      - ./scripts/generate-user.sh:/app/generate-user.sh:ro
+      - ./scripts/lib:/app/lib:ro
       - ./docs:/docs:ro
       - moav_state:/state
       - moav_certs:/certs

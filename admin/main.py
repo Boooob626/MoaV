@@ -32,6 +32,18 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
 ADMIN_IP_WHITELIST = os.environ.get("ADMIN_IP_WHITELIST", "").split(",")
 ADMIN_IP_WHITELIST = [ip.strip() for ip in ADMIN_IP_WHITELIST if ip.strip()]
 
+SERVER_IP = os.environ.get("SERVER_IP", "")
+DOMAIN = os.environ.get("DOMAIN", "")
+
+
+def get_system_uptime() -> int:
+    """Get system uptime in seconds from /proc/uptime."""
+    try:
+        with open("/proc/uptime") as f:
+            return int(float(f.read().split()[0]))
+    except Exception:
+        return 0
+
 SINGBOX_API = "http://moav-sing-box:9090"
 CLASH_SECRET = ""
 
@@ -322,6 +334,89 @@ async def fetch_conduit_stats():
     return stats
 
 
+PROMETHEUS_URL = "http://prometheus:9091"
+
+
+async def fetch_aggregate_stats():
+    """Fetch aggregated stats across all protocols from Prometheus."""
+    stats = {
+        "active_users": 0,
+        "total_users": 0,
+        "total_connections": 0,
+        "protocols": {},  # protocol_name -> {active_users, connections}
+    }
+
+    queries = {
+        # Active users per protocol
+        "singbox_active": "singbox_active_users",
+        "xray_active": "xray_active_users",
+        "wg_active": 'count(wireguard_peer_active == 1)',
+        "awg_active": 'count(amneziawg_peer_active == 1)',
+        # Total users per protocol
+        "singbox_total": "singbox_total_users",
+        "xray_total": "xray_total_users",
+        "wg_total": "wireguard_peers_total",
+        "awg_total": "amneziawg_peers_total",
+        # Connections
+        "singbox_conns": "singbox_total_connections",
+        "xray_conns": "xray_total_connections",
+        # Traffic
+        "xray_up": "xray_upload_bytes_total",
+        "xray_down": "xray_download_bytes_total",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for key, query in queries.items():
+                try:
+                    resp = await client.get(
+                        f"{PROMETHEUS_URL}/api/v1/query",
+                        params={"query": query}
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        results = data.get("data", {}).get("result", [])
+                        if results:
+                            queries[key] = float(results[0].get("value", [0, 0])[1])
+                        else:
+                            queries[key] = 0
+                    else:
+                        queries[key] = 0
+                except Exception:
+                    queries[key] = 0
+
+        stats["protocols"]["sing-box"] = {
+            "active": int(queries.get("singbox_active", 0) if isinstance(queries.get("singbox_active"), (int, float)) else 0),
+            "total": int(queries.get("singbox_total", 0) if isinstance(queries.get("singbox_total"), (int, float)) else 0),
+            "connections": int(queries.get("singbox_conns", 0) if isinstance(queries.get("singbox_conns"), (int, float)) else 0),
+        }
+        stats["protocols"]["xray"] = {
+            "active": int(queries.get("xray_active", 0) if isinstance(queries.get("xray_active"), (int, float)) else 0),
+            "total": int(queries.get("xray_total", 0) if isinstance(queries.get("xray_total"), (int, float)) else 0),
+            "connections": int(queries.get("xray_conns", 0) if isinstance(queries.get("xray_conns"), (int, float)) else 0),
+            "upload": queries.get("xray_up", 0) if isinstance(queries.get("xray_up"), (int, float)) else 0,
+            "download": queries.get("xray_down", 0) if isinstance(queries.get("xray_down"), (int, float)) else 0,
+        }
+        stats["protocols"]["wireguard"] = {
+            "active": int(queries.get("wg_active", 0) if isinstance(queries.get("wg_active"), (int, float)) else 0),
+            "total": int(queries.get("wg_total", 0) if isinstance(queries.get("wg_total"), (int, float)) else 0),
+        }
+        stats["protocols"]["amneziawg"] = {
+            "active": int(queries.get("awg_active", 0) if isinstance(queries.get("awg_active"), (int, float)) else 0),
+            "total": int(queries.get("awg_total", 0) if isinstance(queries.get("awg_total"), (int, float)) else 0),
+        }
+
+        for p in stats["protocols"].values():
+            stats["active_users"] += p.get("active", 0)
+            stats["total_users"] += p.get("total", 0)
+            stats["total_connections"] += p.get("connections", 0)
+
+    except Exception as e:
+        print(f"[admin] Prometheus query failed: {e}")
+
+    return stats
+
+
 def format_bytes(bytes_val):
     """Format bytes to human readable"""
     for unit in ["B", "KB", "MB", "GB", "TB"]:
@@ -357,6 +452,7 @@ async def dashboard(request: Request, username: str = Depends(verify_auth)):
     """Main dashboard page"""
     stats = await fetch_singbox_stats()
     conduit_stats = await fetch_conduit_stats()
+    agg_stats = await fetch_aggregate_stats()
     services = get_services_status()
     update_info = await check_for_updates()
 
@@ -370,7 +466,7 @@ async def dashboard(request: Request, username: str = Depends(verify_auth)):
     import glob
     has_letsencrypt = any(
         Path(f"{d}fullchain.pem").exists()
-        for d in glob.glob("/certs/live/*/")
+        for d in (glob.glob("/tmp/certs/live/*/") or glob.glob("/certs/live/*/"))
     )
 
     return templates.TemplateResponse("dashboard.html", {
@@ -390,9 +486,13 @@ async def dashboard(request: Request, username: str = Depends(verify_auth)):
         "update_available": update_info["update_available"],
         "latest_version": update_info["latest_version"],
         "current_version": update_info["current_version"],
+        "agg_stats": agg_stats,
         "mahsanet_configured": bool(MAHSANET_API_KEY),
         "mahsanet_protocols": MAHSANET_PROTOCOLS,
         "mahsanet_all_protocols": list(PROTOCOL_FILE_MAP.keys()),
+        "server_ip": SERVER_IP,
+        "domain": DOMAIN,
+        "uptime_seconds": get_system_uptime(),
     })
 
 
@@ -680,7 +780,7 @@ async def mahsanet_api_call(method: str, endpoint: str = "", data: dict = None):
         "Authorization": f"Token {MAHSANET_API_KEY}",
         "Content-Type": "application/json",
     }
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         if method == "GET":
             resp = await client.get(url, headers=headers)
         elif method == "POST":
@@ -880,10 +980,40 @@ async def mahsanet_delete_config(config_id: str, _: str = Depends(verify_auth)):
         raise HTTPException(status_code=400, detail="MahsaNet API key not configured")
 
     try:
-        resp = await mahsanet_api_call("DELETE", f"{config_id}/")
-        if resp.status_code in (200, 204):
-            return {"success": True}
-        raise HTTPException(status_code=resp.status_code, detail="Failed to delete config")
+        # Try multiple URL patterns — MahsaNet API lookup_field is unknown
+        attempts = [
+            f"{config_id}/",   # /config/{hash}/
+            f"{config_id}",    # /config/{hash} (no trailing slash)
+        ]
+
+        # First, try to get the config's actual 'id' via GET single
+        get_resp = await mahsanet_api_call("GET", f"{config_id}/")
+        if get_resp.status_code == 200:
+            actual_id = get_resp.json().get("id", "")
+            if actual_id and str(actual_id) != config_id:
+                attempts.insert(0, f"{actual_id}/")
+                attempts.insert(1, f"{actual_id}")
+        else:
+            # Try filter lookup
+            lookup = await mahsanet_api_call("GET", f"?hash={config_id}&limit=1")
+            if lookup.status_code == 200:
+                results = lookup.json().get("results", [])
+                if results:
+                    for field in ["id", "pk", "uuid"]:
+                        val = results[0].get(field)
+                        if val and str(val) != config_id:
+                            attempts.insert(0, f"{val}/")
+                    print(f"[MahsaNet] Config fields for hash={config_id}: {list(results[0].keys())}")
+
+        last_resp = None
+        for path in attempts:
+            resp = await mahsanet_api_call("DELETE", path)
+            if resp.status_code in (200, 204):
+                return {"success": True}
+            last_resp = resp
+
+        detail = "Delete not supported — MahsaNet API does not expose the required config ID. Use the MahsaNet web dashboard to delete configs."
+        raise HTTPException(status_code=422, detail=detail)
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"MahsaNet API unreachable: {e}")
 
@@ -903,8 +1033,12 @@ def find_certificates(wait_for_letsencrypt=True, max_wait=60):
     import time
 
     # Check for self-signed first to determine if we're in domainless mode
-    selfsigned_key = "/certs/selfsigned/privkey.pem"
-    selfsigned_cert = "/certs/selfsigned/fullchain.pem"
+    # Check /tmp/certs first (moav-readable copy), fall back to /certs (original)
+    for certs_base in ["/tmp/certs", "/certs"]:
+        selfsigned_key = f"{certs_base}/selfsigned/privkey.pem"
+        selfsigned_cert = f"{certs_base}/selfsigned/fullchain.pem"
+        if Path(selfsigned_key).exists() and Path(selfsigned_cert).exists():
+            break
     has_selfsigned = Path(selfsigned_key).exists() and Path(selfsigned_cert).exists()
 
     # Wait for Let's Encrypt certs if requested
@@ -914,7 +1048,7 @@ def find_certificates(wait_for_letsencrypt=True, max_wait=60):
         print(f"Waiting for Let's Encrypt certificate (up to {max_wait}s)...")
 
         while waited < max_wait:
-            cert_dirs = glob.glob("/certs/live/*/")
+            cert_dirs = glob.glob("/tmp/certs/live/*/") or glob.glob("/certs/live/*/")
             for cert_dir in cert_dirs:
                 # Skip README-only directories
                 key_path = f"{cert_dir}privkey.pem"
@@ -935,7 +1069,7 @@ def find_certificates(wait_for_letsencrypt=True, max_wait=60):
                 print(f"  Still waiting... ({waited}s)")
 
     # Check one more time without waiting
-    cert_dirs = glob.glob("/certs/live/*/")
+    cert_dirs = glob.glob("/tmp/certs/live/*/") or glob.glob("/certs/live/*/")
     for cert_dir in cert_dirs:
         key_path = f"{cert_dir}privkey.pem"
         cert_path = f"{cert_dir}fullchain.pem"

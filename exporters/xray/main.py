@@ -6,12 +6,14 @@ Parses Xray container logs for connection metrics and queries the
 Xray Stats API (gRPC via dokodemo-door) for per-user traffic data.
 """
 
+import json
 import re
 import time
 import subprocess
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
+from geoip import GeoIPLookup
 
 # Metrics storage
 user_connections = defaultdict(int)  # user -> total connections
@@ -19,21 +21,23 @@ user_last_seen = {}  # user -> timestamp
 active_users = set()  # users seen in last 5 minutes
 user_upload = defaultdict(int)  # user -> upload bytes (cumulative)
 user_download = defaultdict(int)  # user -> download bytes (cumulative)
+country_connections = defaultdict(int)  # country -> total connections
+user_country = {}  # user -> last seen country code
 
 # Lock for thread safety
 metrics_lock = threading.Lock()
 
-# Regex to parse Xray access log lines
+# GeoIP lookup
+geoip = GeoIPLookup()
+
+# Regex to parse Xray access log lines with source IP
+# Format: IP:port accepted tcp:destination:port email:user@moav
+IP_EMAIL_PATTERN = re.compile(
+    r'(\d+\.\d+\.\d+\.\d+):\d+\s+accepted\s+.*?email:\s*(\S+?)@moav'
+)
+# Fallback patterns (without IP)
 EMAIL_PATTERN = re.compile(r'email:\s*(\S+?)@moav')
 BRACKET_PATTERN = re.compile(r'\[([^\]]+?)@moav\]')
-
-# Regex to parse xray api statsquery output (protobuf text format)
-# stat: {
-#   name: "user>>>username>>>traffic>>>uplink"
-#   value: 12345
-# }
-STAT_NAME_PATTERN = re.compile(r'name:\s*"([^"]+)"')
-STAT_VALUE_PATTERN = re.compile(r'value:\s*(\d+)')
 
 # Active window in seconds (5 minutes)
 ACTIVE_WINDOW = 300
@@ -41,24 +45,41 @@ ACTIVE_WINDOW = 300
 # Stats query interval (seconds)
 STATS_INTERVAL = 15
 
+# Track first successful stats query for diagnostics
+stats_query_count = 0
+
 
 def parse_log_line(line: str) -> bool:
     """Parse a log line and update metrics. Returns True if parsed."""
     if 'accepted' not in line:
         return False
 
-    match = EMAIL_PATTERN.search(line)
-    if not match:
-        match = BRACKET_PATTERN.search(line)
-    if not match:
-        return False
+    source_ip = None
+    username = None
 
-    username = match.group(1)
+    # Try to extract both IP and email
+    ip_match = IP_EMAIL_PATTERN.search(line)
+    if ip_match:
+        source_ip = ip_match.group(1)
+        username = ip_match.group(2)
+    else:
+        # Fallback: extract email only
+        match = EMAIL_PATTERN.search(line)
+        if not match:
+            match = BRACKET_PATTERN.search(line)
+        if not match:
+            return False
+        username = match.group(1)
+
     now = time.time()
+    country = geoip.lookup(source_ip) if source_ip else "XX"
 
     with metrics_lock:
         user_connections[username] += 1
         user_last_seen[username] = now
+        country_connections[country] += 1
+        if source_ip:
+            user_country[username] = country
 
     return True
 
@@ -77,7 +98,7 @@ def update_active_users():
 
 
 def query_xray_stats():
-    """Query Xray Stats API for per-user traffic data."""
+    """Query Xray Stats API for per-user cumulative traffic data."""
     try:
         result = subprocess.run(
             ['docker', 'exec', 'moav-xray', 'xray', 'api', 'statsquery',
@@ -86,11 +107,32 @@ def query_xray_stats():
         )
 
         if result.returncode != 0:
-            if result.stderr:
-                print(f"Stats API error: {result.stderr.strip()}")
+            result = subprocess.run(
+                ['docker', 'exec', 'moav-xray', '/usr/local/bin/xray', 'api', 'statsquery',
+                 '-s', '127.0.0.1:10085', '-pattern', 'user'],
+                capture_output=True, text=True, timeout=10
+            )
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip() if result.stderr else "no stderr"
+            print(f"Stats API error (rc={result.returncode}): {stderr}")
             return
 
-        parse_stats_output(result.stdout)
+        if stats_query_count == 0:
+            print(f"Stats API raw: stdout={len(result.stdout)} bytes, stderr={len(result.stderr)} bytes")
+            if result.stdout:
+                print(f"Stats stdout preview: {result.stdout[:200]}")
+            if result.stderr and not result.stdout:
+                print(f"Stats stderr preview: {result.stderr[:200]}")
+
+        # xray may output to stdout or stderr depending on version
+        output = result.stdout.strip()
+        if not output:
+            output = result.stderr.strip()
+        if not output:
+            return
+
+        parse_stats_output(output)
 
     except subprocess.TimeoutExpired:
         print("Stats API query timed out")
@@ -99,36 +141,40 @@ def query_xray_stats():
 
 
 def parse_stats_output(output: str):
-    """Parse protobuf text format stats output from xray api statsquery."""
-    # Split into stat blocks
-    current_name = None
+    """Parse JSON stats output from xray api statsquery (cumulative values)."""
+    global stats_query_count
+    parsed_count = 0
 
-    for line in output.splitlines():
-        line = line.strip()
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        stats_query_count += 1
+        if stats_query_count <= 3:
+            print(f"Stats query #{stats_query_count}: failed to parse JSON")
+        return
 
-        name_match = STAT_NAME_PATTERN.search(line)
-        if name_match:
-            current_name = name_match.group(1)
-            continue
+    for entry in data.get("stat", []):
+        name = entry.get("name", "")
+        value = entry.get("value", 0)
 
-        value_match = STAT_VALUE_PATTERN.search(line)
-        if value_match and current_name:
-            value = int(value_match.group(1))
+        parts = name.split(">>>")
+        if len(parts) == 4 and parts[0] == "user" and parts[2] == "traffic":
+            username = parts[1].replace("@moav", "")
+            direction = parts[3]
 
-            # Format: user>>>username@moav>>>traffic>>>uplink/downlink
-            parts = current_name.split(">>>")
-            if len(parts) == 4 and parts[0] == "user" and parts[2] == "traffic":
-                # Extract username (remove @moav suffix)
-                username = parts[1].replace("@moav", "")
-                direction = parts[3]
+            with metrics_lock:
+                if direction == "uplink":
+                    user_upload[username] = value
+                elif direction == "downlink":
+                    user_download[username] = value
+            parsed_count += 1
 
-                with metrics_lock:
-                    if direction == "uplink":
-                        user_upload[username] += value
-                    elif direction == "downlink":
-                        user_download[username] += value
-
-            current_name = None
+    stats_query_count += 1
+    if stats_query_count <= 3 or stats_query_count % 100 == 0:
+        total_up = sum(user_upload.values())
+        total_down = sum(user_download.values())
+        print(f"Stats query #{stats_query_count}: parsed {parsed_count} entries, "
+              f"users with traffic: {len(user_upload)}, total: {total_up + total_down} bytes")
 
 
 def tail_docker_logs():
@@ -228,6 +274,22 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 output.append('# HELP xray_download_bytes_total Total download bytes across all users')
                 output.append('# TYPE xray_download_bytes_total counter')
                 output.append(f'xray_download_bytes_total {total_down}')
+
+                # Connections by country
+                output.append('# HELP xray_connections_by_country Total connections by source country')
+                output.append('# TYPE xray_connections_by_country counter')
+                for country, count in sorted(country_connections.items()):
+                    output.append(f'xray_connections_by_country{{country="{country}"}} {count}')
+
+                # Active users by country
+                output.append('# HELP xray_active_users_by_country Active users by source country')
+                output.append('# TYPE xray_active_users_by_country gauge')
+                active_country_counts = defaultdict(int)
+                for user in active_users:
+                    c = user_country.get(user, "XX")
+                    active_country_counts[c] += 1
+                for country, count in sorted(active_country_counts.items()):
+                    output.append(f'xray_active_users_by_country{{country="{country}"}} {count}')
 
             self.wfile.write('\n'.join(output).encode())
 
