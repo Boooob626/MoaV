@@ -895,52 +895,45 @@ async def mahsanet_delete_config(config_id: str, _: str = Depends(verify_auth)):
         raise HTTPException(status_code=400, detail="MahsaNet API key not configured")
 
     try:
-        # Try config_id as-is (could be id or hash)
-        resp = await mahsanet_api_call("DELETE", f"{config_id}/")
-        if resp.status_code in (200, 204):
-            return {"success": True}
+        # Try multiple URL patterns — MahsaNet API lookup_field is unknown
+        attempts = [
+            f"{config_id}/",   # /config/{hash}/
+            f"{config_id}",    # /config/{hash} (no trailing slash)
+        ]
 
-        # If 404, look up the config to find the correct identifier
-        if resp.status_code == 404:
-            # Try GET single config (might return id field)
-            get_resp = await mahsanet_api_call("GET", f"{config_id}/")
-            if get_resp.status_code == 200:
-                config_data = get_resp.json()
-                actual_id = config_data.get("id", "")
-                if actual_id and actual_id != config_id:
-                    resp2 = await mahsanet_api_call("DELETE", f"{actual_id}/")
-                    if resp2.status_code in (200, 204):
-                        return {"success": True}
-
-            # Try searching by hash filter to find available fields
+        # First, try to get the config's actual 'id' via GET single
+        get_resp = await mahsanet_api_call("GET", f"{config_id}/")
+        if get_resp.status_code == 200:
+            actual_id = get_resp.json().get("id", "")
+            if actual_id and str(actual_id) != config_id:
+                attempts.insert(0, f"{actual_id}/")
+                attempts.insert(1, f"{actual_id}")
+        else:
+            # Try filter lookup
             lookup = await mahsanet_api_call("GET", f"?hash={config_id}&limit=1")
             if lookup.status_code == 200:
                 results = lookup.json().get("results", [])
                 if results:
-                    # Try any identifier field we can find
-                    for field in ["id", "pk", "slug", "uuid"]:
-                        actual_id = results[0].get(field)
-                        if actual_id and str(actual_id) != config_id:
-                            resp3 = await mahsanet_api_call("DELETE", f"{actual_id}/")
-                            if resp3.status_code in (200, 204):
-                                return {"success": True}
-
-        # Log available fields for debugging
-        try:
-            lookup_debug = await mahsanet_api_call("GET", f"?hash={config_id}&limit=1")
-            if lookup_debug.status_code == 200:
-                results = lookup_debug.json().get("results", [])
-                if results:
+                    for field in ["id", "pk", "uuid"]:
+                        val = results[0].get(field)
+                        if val and str(val) != config_id:
+                            attempts.insert(0, f"{val}/")
                     print(f"[MahsaNet] Config fields for hash={config_id}: {list(results[0].keys())}")
-        except Exception:
-            pass
 
-        detail = f"MahsaNet API returned {resp.status_code}"
-        try:
-            detail += f": {resp.text[:200]}"
-        except Exception:
-            pass
-        raise HTTPException(status_code=resp.status_code, detail=detail)
+        last_resp = None
+        for path in attempts:
+            resp = await mahsanet_api_call("DELETE", path)
+            if resp.status_code in (200, 204):
+                return {"success": True}
+            last_resp = resp
+
+        detail = f"MahsaNet delete failed for hash={config_id}. The API may not support deletion by hash — contact MahsaNet support."
+        if last_resp:
+            try:
+                detail += f" (HTTP {last_resp.status_code}: {last_resp.text[:150]})"
+            except Exception:
+                pass
+        raise HTTPException(status_code=last_resp.status_code if last_resp else 500, detail=detail)
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"MahsaNet API unreachable: {e}")
 
