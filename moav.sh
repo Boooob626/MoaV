@@ -1733,6 +1733,411 @@ cmd_setup_dns() {
 }
 
 # =============================================================================
+# Doctor (Diagnostics)
+# =============================================================================
+
+DOCTOR_CHECKS=(
+    "dns:Check DNS records for enabled protocols"
+)
+
+doctor_is_enabled() {
+    local value
+    value=$(printf "%s" "${1:-}" | tr '[:upper:]' '[:lower:]')
+    case "$value" in
+        true|1|yes|on)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+doctor_lookup_a_records() {
+    local host="$1"
+
+    if command -v dig >/dev/null 2>&1; then
+        dig +short A "$host" 2>/dev/null | awk '/^[0-9]+\./ { print $1 }' | sort -u
+        return 0
+    fi
+
+    if command -v getent >/dev/null 2>&1; then
+        getent ahostsv4 "$host" 2>/dev/null | awk '{ print $1 }' | sort -u
+        return 0
+    fi
+
+    if command -v host >/dev/null 2>&1; then
+        host "$host" 2>/dev/null | awk '/ has address / { print $NF }' | sort -u
+        return 0
+    fi
+
+    if command -v nslookup >/dev/null 2>&1; then
+        nslookup "$host" 2>/dev/null | awk '
+            /^Name: / { name_seen=1; next }
+            name_seen && /^Address: / {
+                gsub(/#.*/, "", $2)
+                print $2
+            }
+        ' | awk '/^[0-9]+\./ { print $1 }' | sort -u
+        return 0
+    fi
+
+    return 127
+}
+
+doctor_lookup_ns_records() {
+    local host="$1"
+
+    if command -v dig >/dev/null 2>&1; then
+        dig +short NS "$host" 2>/dev/null | sed 's/\.$//' | sed '/^$/d' | sort -u
+        return 0
+    fi
+
+    if command -v host >/dev/null 2>&1; then
+        host -t NS "$host" 2>/dev/null | awk '/ name server / { print $NF }' | sed 's/\.$//' | sort -u
+        return 0
+    fi
+
+    if command -v nslookup >/dev/null 2>&1; then
+        nslookup -type=NS "$host" 2>/dev/null | awk -F' = ' '/nameserver = / { print $2 }' | sed 's/\.$//' | sort -u
+        return 0
+    fi
+
+    return 127
+}
+
+doctor_lines_to_csv() {
+    awk '
+        NF {
+            if (count++) {
+                printf ", "
+            }
+            printf "%s", $0
+        }
+        END {
+            if (count) {
+                printf "\n"
+            }
+        }
+    '
+}
+
+doctor_domainless_protocols() {
+    local env_file="$1"
+    local protocols=()
+
+    if doctor_is_enabled "$(get_env_val "ENABLE_REALITY" "$env_file" "true")"; then
+        protocols+=("Reality")
+    fi
+    if doctor_is_enabled "$(get_env_val "ENABLE_XHTTP" "$env_file" "true")"; then
+        protocols+=("XHTTP")
+    fi
+    if doctor_is_enabled "$(get_env_val "ENABLE_WIREGUARD" "$env_file" "true")"; then
+        protocols+=("WireGuard")
+    fi
+    if doctor_is_enabled "$(get_env_val "ENABLE_AMNEZIAWG" "$env_file" "true")"; then
+        protocols+=("AmneziaWG")
+    fi
+    if doctor_is_enabled "$(get_env_val "ENABLE_TELEMT" "$env_file" "true")"; then
+        protocols+=("Telegram MTProxy")
+    fi
+    if doctor_is_enabled "$(get_env_val "ENABLE_ADMIN_UI" "$env_file" "true")"; then
+        protocols+=("Admin Dashboard")
+    fi
+    if doctor_is_enabled "$(get_env_val "ENABLE_CONDUIT" "$env_file" "true")"; then
+        protocols+=("Conduit")
+    fi
+    if doctor_is_enabled "$(get_env_val "ENABLE_SNOWFLAKE" "$env_file" "true")"; then
+        protocols+=("Snowflake")
+    fi
+
+    if [[ ${#protocols[@]} -gt 0 ]]; then
+        printf "%s\n" "${protocols[@]}" | doctor_lines_to_csv
+    fi
+}
+
+doctor_check_a_record() {
+    local label="$1"
+    local host="$2"
+    local expected_ip="$3"
+    local remediation="$4"
+    local resolved_ips=""
+
+    if ! resolved_ips=$(doctor_lookup_a_records "$host"); then
+        error "${label}: unable to query DNS for ${host}"
+        echo "  Install 'dig', 'host', or 'nslookup', then rerun 'moav doctor dns'."
+        return 1
+    fi
+
+    if [[ -z "$resolved_ips" ]]; then
+        error "${label}: ${host} does not resolve"
+        echo "  Fix: ${remediation}"
+        return 1
+    fi
+
+    if printf "%s\n" "$resolved_ips" | grep -Fxq "$expected_ip"; then
+        success "${label}: ${host} points to ${expected_ip}"
+        return 0
+    fi
+
+    error "${label}: ${host} does not point to ${expected_ip}"
+    echo "  Found: $(printf "%s\n" "$resolved_ips" | doctor_lines_to_csv)"
+    echo "  Fix: ${remediation}"
+    return 1
+}
+
+doctor_check_ns_record() {
+    local label="$1"
+    local host="$2"
+    local expected_ns="$3"
+    local remediation="$4"
+    local resolved_ns=""
+
+    if ! resolved_ns=$(doctor_lookup_ns_records "$host"); then
+        error "${label}: unable to query NS records for ${host}"
+        echo "  Install 'dig', 'host', or 'nslookup', then rerun 'moav doctor dns'."
+        return 1
+    fi
+
+    if [[ -z "$resolved_ns" ]]; then
+        error "${label}: ${host} has no NS delegation"
+        echo "  Fix: ${remediation}"
+        return 1
+    fi
+
+    if printf "%s\n" "$resolved_ns" | grep -Fxiq "$expected_ns"; then
+        success "${label}: ${host} delegates to ${expected_ns}"
+        return 0
+    fi
+
+    error "${label}: ${host} does not delegate to ${expected_ns}"
+    echo "  Found: $(printf "%s\n" "$resolved_ns" | doctor_lines_to_csv)"
+    echo "  Fix: ${remediation}"
+    return 1
+}
+
+doctor_check_resolves() {
+    local label="$1"
+    local host="$2"
+    local remediation="$3"
+    local resolved_ips=""
+
+    if ! resolved_ips=$(doctor_lookup_a_records "$host"); then
+        error "${label}: unable to query DNS for ${host}"
+        echo "  Install 'dig', 'host', or 'nslookup', then rerun 'moav doctor dns'."
+        return 1
+    fi
+
+    if [[ -z "$resolved_ips" ]]; then
+        error "${label}: ${host} does not resolve"
+        echo "  Fix: ${remediation}"
+        return 1
+    fi
+
+    success "${label}: ${host} resolves ($(printf "%s\n" "$resolved_ips" | doctor_lines_to_csv))"
+    return 0
+}
+
+doctor_check_dns() {
+    local env_file=".env"
+    local failures=0
+    local domain=""
+    local server_ip=""
+    local dnstt_enabled=false
+    local slipstream_enabled=false
+    local cdn_subdomain=""
+    local cdn_domain=""
+    local cdn_host=""
+
+    if [[ ! -f "$env_file" ]]; then
+        error ".env file not found"
+        echo "  Run 'moav check' or copy '.env.example' to '.env' first."
+        return 1
+    fi
+
+    domain=$(get_env_val "DOMAIN" "$env_file" "")
+    if [[ -z "$domain" ]]; then
+        warn "DOMAIN is empty; skipping DNS diagnostics (domainless mode)."
+        local domainless_protocols=""
+        domainless_protocols=$(doctor_domainless_protocols "$env_file")
+        if [[ -n "$domainless_protocols" ]]; then
+            echo "  Domainless-capable protocols enabled: ${domainless_protocols}"
+        else
+            echo "  No domainless-capable protocols are enabled in .env."
+        fi
+        return 2
+    fi
+
+    server_ip=$(get_env_val "SERVER_IP" "$env_file" "")
+    if [[ -z "$server_ip" ]]; then
+        server_ip=$(curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null || curl -4 -fsS --max-time 5 https://ifconfig.me 2>/dev/null || true)
+        if [[ -n "$server_ip" ]]; then
+            warn "SERVER_IP is empty in .env; using detected public IP for comparison: ${server_ip}"
+        else
+            error "SERVER_IP is empty and public IP detection failed"
+            echo "  Set SERVER_IP in .env so A records can be verified."
+            failures=$((failures + 1))
+        fi
+    else
+        info "Expected server IP: ${server_ip}"
+    fi
+
+    if [[ -n "$server_ip" ]]; then
+        if ! doctor_check_a_record "Main A record" "$domain" "$server_ip" "set A @ -> ${server_ip} (DNS only)"; then
+            failures=$((failures + 1))
+        fi
+    fi
+
+    if doctor_is_enabled "$(get_env_val "ENABLE_DNSTT" "$env_file" "true")"; then
+        dnstt_enabled=true
+    fi
+    if doctor_is_enabled "$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "true")"; then
+        slipstream_enabled=true
+    fi
+
+    if [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
+        local dns_host="dns.${domain}"
+        if [[ -n "$server_ip" ]]; then
+            if ! doctor_check_a_record "DNS nameserver A record" "$dns_host" "$server_ip" "set A dns -> ${server_ip} (DNS only)"; then
+                failures=$((failures + 1))
+            fi
+        else
+            warn "Skipping dns.${domain} A record comparison until SERVER_IP is configured."
+        fi
+
+        if [[ "$dnstt_enabled" == "true" ]]; then
+            local dnstt_subdomain=""
+            dnstt_subdomain=$(get_env_val "DNSTT_SUBDOMAIN" "$env_file" "t")
+            if ! doctor_check_ns_record "dnstt NS record" "${dnstt_subdomain}.${domain}" "$dns_host" "set NS ${dnstt_subdomain} -> ${dns_host}"; then
+                failures=$((failures + 1))
+            fi
+        fi
+
+        if [[ "$slipstream_enabled" == "true" ]]; then
+            local slipstream_subdomain=""
+            slipstream_subdomain=$(get_env_val "SLIPSTREAM_SUBDOMAIN" "$env_file" "s")
+            if ! doctor_check_ns_record "Slipstream NS record" "${slipstream_subdomain}.${domain}" "$dns_host" "set NS ${slipstream_subdomain} -> ${dns_host}"; then
+                failures=$((failures + 1))
+            fi
+        fi
+    else
+        info "DNS tunnel checks skipped: dnstt and Slipstream are disabled."
+    fi
+
+    cdn_subdomain=$(get_env_val "CDN_SUBDOMAIN" "$env_file" "")
+    cdn_domain=$(get_env_val "CDN_DOMAIN" "$env_file" "")
+    if [[ -n "$cdn_subdomain" ]]; then
+        cdn_host="${cdn_subdomain}.${domain}"
+    elif [[ -n "$cdn_domain" ]]; then
+        cdn_host="$cdn_domain"
+    fi
+
+    if [[ -n "$cdn_host" ]]; then
+        if ! doctor_check_resolves "CDN endpoint" "$cdn_host" "create or fix the CDN DNS entry for ${cdn_host}"; then
+            failures=$((failures + 1))
+        fi
+    else
+        info "CDN check skipped: CDN_SUBDOMAIN/CDN_DOMAIN is not configured."
+    fi
+
+    if [[ $failures -gt 0 ]]; then
+        echo ""
+        echo "See docs/DNS.md for record templates and provider-specific examples."
+        return 1
+    fi
+
+    return 0
+}
+
+cmd_doctor() {
+    local requested_check="${1:-}"
+    local selected_checks=()
+    local check_spec=""
+    local check_name=""
+    local check_desc=""
+    local found=false
+    local passed=0
+    local failed=0
+    local skipped=0
+    local rc=0
+
+    case "$requested_check" in
+        help|--help|-h)
+            echo "Usage: moav doctor [check]"
+            echo ""
+            echo "Run MoaV diagnostic checks."
+            echo ""
+            echo "Checks:"
+            for check_spec in "${DOCTOR_CHECKS[@]}"; do
+                check_name="${check_spec%%:*}"
+                check_desc="${check_spec#*:}"
+                printf "  %-12s %s\n" "$check_name" "$check_desc"
+            done
+            echo ""
+            echo "Examples:"
+            echo "  moav doctor"
+            echo "  moav doctor dns"
+            return 0
+            ;;
+    esac
+
+    for check_spec in "${DOCTOR_CHECKS[@]}"; do
+        check_name="${check_spec%%:*}"
+        if [[ -z "$requested_check" || "$requested_check" == "all" || "$requested_check" == "$check_name" ]]; then
+            selected_checks+=("$check_spec")
+        fi
+        if [[ -n "$requested_check" && "$requested_check" == "$check_name" ]]; then
+            found=true
+        fi
+    done
+
+    if [[ -n "$requested_check" && "$requested_check" != "all" && "$found" != "true" ]]; then
+        error "Unknown doctor check: ${requested_check}"
+        echo ""
+        cmd_doctor --help
+        return 1
+    fi
+
+    print_section "MoaV Doctor"
+    info "Running ${#selected_checks[@]} diagnostic check(s)..."
+
+    for check_spec in "${selected_checks[@]}"; do
+        check_name="${check_spec%%:*}"
+        check_desc="${check_spec#*:}"
+
+        echo ""
+        echo -e "${WHITE}${check_name}${NC} - ${check_desc}"
+
+        if "doctor_check_${check_name}"; then
+            passed=$((passed + 1))
+        else
+            rc=$?
+            case "$rc" in
+                2)
+                    skipped=$((skipped + 1))
+                    ;;
+                *)
+                    failed=$((failed + 1))
+                    ;;
+            esac
+        fi
+    done
+
+    echo ""
+    print_section "Doctor Summary"
+    success "${passed} check(s) passed"
+    if [[ $skipped -gt 0 ]]; then
+        warn "${skipped} check(s) skipped"
+    fi
+    if [[ $failed -gt 0 ]]; then
+        error "${failed} check(s) failed"
+        return 1
+    fi
+
+    success "Doctor completed without failures."
+}
+
+# =============================================================================
 # Service Management
 # =============================================================================
 
@@ -3030,6 +3435,7 @@ show_usage() {
     echo "  uninstall [--wipe]    Remove containers and global command (--wipe removes all data)"
     echo "  update [-b BRANCH]    Update MoaV (git pull), optionally switch branch"
     echo "  check                 Run prerequisites check"
+    echo "  doctor [CHECK]        Run diagnostics (e.g. 'doctor dns')"
     echo "  bootstrap             Run first-time setup (includes service selection)"
     echo "  domainless            Enable domainless mode (WireGuard, AmneziaWG, Telegram MTProxy, etc.)"
     echo "  profiles              Change default services for 'moav start'"
@@ -3067,6 +3473,8 @@ show_usage() {
     echo "  moav install                   # Install globally (run from anywhere)"
     echo "  moav update                    # Update MoaV (git pull)"
     echo "  moav update -b dev             # Switch to dev branch and update"
+    echo "  moav doctor                    # Run all diagnostics"
+    echo "  moav doctor dns                # Run only the DNS diagnostic"
     echo "  moav start                     # Start all services"
     echo "  moav start proxy admin         # Start proxy and admin profiles"
     echo "  moav stop conduit              # Stop specific service"
@@ -5779,6 +6187,10 @@ main() {
             ;;
         check)
             cmd_check
+            ;;
+        doctor)
+            shift
+            cmd_doctor "$@"
             ;;
         bootstrap)
             cmd_bootstrap

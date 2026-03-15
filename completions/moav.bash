@@ -13,7 +13,7 @@ _moav() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     cword=$COMP_CWORD
 
-    local commands="help version install uninstall check bootstrap domainless profiles start stop restart status logs users user build test client export import migrate-ip regenerate-users setup-dns update"
+    local commands="help version install uninstall check doctor bootstrap domainless profiles start stop restart status logs users user build test client export import migrate-ip regenerate-users setup-dns update"
     local services="sing-box decoy wstunnel wireguard amneziawg dns-router dnstt slipstream trusttunnel telemt admin psiphon-conduit snowflake grafana"
     local profiles="proxy wireguard amneziawg dnstunnel trusttunnel telegram admin conduit snowflake monitoring client all"
     local protocols="auto reality trojan hysteria2 wireguard psiphon tor dnstt slipstream"
@@ -114,6 +114,9 @@ _moav() {
             ;;
         update)
             COMPREPLY=($(compgen -W "-b --branch" -- "$cur"))
+            ;;
+        doctor)
+            COMPREPLY=($(compgen -W "dns all --help -h help" -- "$cur"))
             ;;
         uninstall)
             COMPREPLY=($(compgen -W "--wipe" -- "$cur"))
