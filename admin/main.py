@@ -34,7 +34,15 @@ ADMIN_IP_WHITELIST = [ip.strip() for ip in ADMIN_IP_WHITELIST if ip.strip()]
 
 SERVER_IP = os.environ.get("SERVER_IP", "")
 DOMAIN = os.environ.get("DOMAIN", "")
-PROCESS_START_TIME = time.time()
+
+
+def get_system_uptime() -> int:
+    """Get system uptime in seconds from /proc/uptime."""
+    try:
+        with open("/proc/uptime") as f:
+            return int(float(f.read().split()[0]))
+    except Exception:
+        return 0
 
 SINGBOX_API = "http://moav-sing-box:9090"
 CLASH_SECRET = ""
@@ -399,7 +407,7 @@ async def dashboard(request: Request, username: str = Depends(verify_auth)):
         "mahsanet_all_protocols": list(PROTOCOL_FILE_MAP.keys()),
         "server_ip": SERVER_IP,
         "domain": DOMAIN,
-        "uptime_seconds": int(time.time() - PROCESS_START_TIME),
+        "uptime_seconds": get_system_uptime(),
     })
 
 
@@ -890,7 +898,12 @@ async def mahsanet_delete_config(config_id: str, _: str = Depends(verify_auth)):
         resp = await mahsanet_api_call("DELETE", f"{config_id}/")
         if resp.status_code in (200, 204):
             return {"success": True}
-        raise HTTPException(status_code=resp.status_code, detail="Failed to delete config")
+        detail = f"MahsaNet API returned {resp.status_code}"
+        try:
+            detail += f": {resp.text[:200]}"
+        except Exception:
+            pass
+        raise HTTPException(status_code=resp.status_code, detail=detail)
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"MahsaNet API unreachable: {e}")
 

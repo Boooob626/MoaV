@@ -1594,6 +1594,12 @@ run_bootstrap() {
         return 1
     fi
 
+    # Download GeoIP database for country-level monitoring (best-effort)
+    info "Downloading GeoIP database..."
+    docker compose --profile setup run --rm geoip-updater 2>/dev/null && \
+        success "GeoIP database ready" || \
+        warn "GeoIP download failed (monitoring will work without country data)"
+
     echo ""
     success "Bootstrap completed!"
     echo ""

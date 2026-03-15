@@ -810,7 +810,7 @@
             </div>
             <div class="footer-row footer-info">
                 <span>v{{ current_version }}</span>
-                {% if server_ip %}<span class="footer-sep">|</span><span>{{ server_ip }}</span>{% endif %}
+                {% if server_ip %}<span class="footer-sep">|</span><span title="Click to copy" style="cursor:pointer" onclick="navigator.clipboard.writeText('{{ server_ip }}')">{{ server_ip.split('.')[0] }}.***.***.{{ server_ip.split('.')[-1] }}</span>{% endif %}
                 {% if domain %}<span class="footer-sep">|</span><span>{{ domain }}</span>{% endif %}
                 <span class="footer-sep">|</span>
                 <span id="footer-uptime" data-seconds="{{ uptime_seconds }}">up {{ uptime_seconds // 86400 }}d {{ (uptime_seconds % 86400) // 3600 }}h</span>
@@ -1001,7 +1001,8 @@
                 if (resp.ok) {
                     loadMahsanetConfigs();
                 } else {
-                    alert('Failed to delete config');
+                    const err = await resp.json().catch(() => ({}));
+                    alert(err.detail || `Failed to delete config (HTTP ${resp.status})`);
                 }
             } catch (e) {
                 alert('Error: ' + e.message);
