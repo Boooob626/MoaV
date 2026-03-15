@@ -101,18 +101,18 @@ def update_active_users():
 
 
 def query_xray_stats():
-    """Query Xray Stats API for per-user traffic data using -reset for incremental values."""
+    """Query Xray Stats API for per-user cumulative traffic data."""
     try:
         result = subprocess.run(
             ['docker', 'exec', 'moav-xray', 'xray', 'api', 'statsquery',
-             '-s', '127.0.0.1:10085', '-pattern', 'user', '-reset'],
+             '-s', '127.0.0.1:10085', '-pattern', 'user'],
             capture_output=True, text=True, timeout=10
         )
 
         if result.returncode != 0:
             result = subprocess.run(
                 ['docker', 'exec', 'moav-xray', '/usr/local/bin/xray', 'api', 'statsquery',
-                 '-s', '127.0.0.1:10085', '-pattern', 'user', '-reset'],
+                 '-s', '127.0.0.1:10085', '-pattern', 'user'],
                 capture_output=True, text=True, timeout=10
             )
 
@@ -133,7 +133,7 @@ def query_xray_stats():
 
 
 def parse_stats_output(output: str):
-    """Parse protobuf text format stats output from xray api statsquery."""
+    """Parse protobuf text format stats output from xray api statsquery (cumulative values)."""
     global stats_query_count
     current_name = None
     parsed_count = 0
@@ -157,17 +157,19 @@ def parse_stats_output(output: str):
 
                 with metrics_lock:
                     if direction == "uplink":
-                        user_upload[username] += value
+                        user_upload[username] = value  # cumulative, set directly
                     elif direction == "downlink":
-                        user_download[username] += value
+                        user_download[username] = value  # cumulative, set directly
                 parsed_count += 1
 
             current_name = None
 
     stats_query_count += 1
     if stats_query_count <= 3 or stats_query_count % 100 == 0:
+        total_up = sum(user_upload.values())
+        total_down = sum(user_download.values())
         print(f"Stats query #{stats_query_count}: parsed {parsed_count} entries, "
-              f"users with traffic: {len(user_upload)}")
+              f"users with traffic: {len(user_upload)}, total: {total_up + total_down} bytes")
 
 
 def tail_docker_logs():
