@@ -109,9 +109,13 @@ def update_active_users():
 def poll_clash_connections():
     """Poll Clash API /connections for source IPs and update country metrics."""
     if urlopen is None:
+        print("GeoIP: urllib not available, skipping Clash API polling")
         return
 
+    poll_count = 0
+
     while True:
+        poll_count += 1
         try:
             url = f"{CLASH_API}/connections"
             headers = {}
@@ -121,13 +125,13 @@ def poll_clash_connections():
             resp = urlopen(req, timeout=5)
             data = json.loads(resp.read().decode())
 
+            connections = data.get("connections", []) or []
             seen_countries = defaultdict(int)
             seen_user_country = {}
 
-            for conn in data.get("connections", []):
+            for conn in connections:
                 meta = conn.get("metadata", {})
                 source_ip = meta.get("sourceIP", "")
-                # sing-box Clash API puts the username in metadata.inboundUser
                 user = meta.get("inboundUser", "")
 
                 if source_ip:
@@ -137,13 +141,17 @@ def poll_clash_connections():
                         seen_user_country[user] = country
 
             with metrics_lock:
-                # Merge into running totals
                 for country, count in seen_countries.items():
                     country_connections[country] += count
                 user_country.update(seen_user_country)
 
+            if poll_count <= 3 or poll_count % 100 == 0:
+                print(f"GeoIP poll #{poll_count}: {len(connections)} connections, "
+                      f"{len(seen_countries)} countries, total tracked: {sum(country_connections.values())}")
+
         except Exception as e:
-            pass  # Silently retry
+            if poll_count <= 5 or poll_count % 100 == 0:
+                print(f"GeoIP poll #{poll_count} error: {e}")
 
         time.sleep(GEOIP_POLL_INTERVAL)
 
