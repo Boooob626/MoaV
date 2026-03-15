@@ -633,20 +633,14 @@
             </div>
             {% if not error %}
             <div class="stat">
-                <div class="stat-label">sing-box Traffic</div>
-                <div class="stat-val">{{ total_upload }} / {{ total_download }}</div>
-            </div>
-            {% endif %}
-            {% if agg_stats.protocols.xray.upload %}
-            <div class="stat">
-                <div class="stat-label">Xray Traffic</div>
-                <div class="stat-val">{{ format_bytes(agg_stats.protocols.xray.upload) }} / {{ format_bytes(agg_stats.protocols.xray.download) }}</div>
+                <div class="stat-label">Traffic ↑ / ↓</div>
+                <div class="stat-val" style="font-size:0.95rem;">{{ total_upload }}<span style="color:var(--text-dim);font-size:0.7rem;"> / </span>{{ total_download }}</div>
             </div>
             {% endif %}
             {% if conduit_stats.running %}
             <div class="stat">
-                <div class="stat-label">Conduit</div>
-                <div class="stat-val ok">{{ conduit_stats.bandwidth.upload }} / {{ conduit_stats.bandwidth.download }}</div>
+                <div class="stat-label">Conduit ↑ / ↓</div>
+                <div class="stat-val ok" style="font-size:0.95rem;">{{ conduit_stats.bandwidth.upload }}<span style="color:var(--text-dim);font-size:0.7rem;"> / </span>{{ conduit_stats.bandwidth.download }}</div>
             </div>
             {% endif %}
         </div>
