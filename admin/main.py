@@ -895,9 +895,23 @@ async def mahsanet_delete_config(config_id: str, _: str = Depends(verify_auth)):
         raise HTTPException(status_code=400, detail="MahsaNet API key not configured")
 
     try:
+        # Try config_id as-is (could be id or hash)
         resp = await mahsanet_api_call("DELETE", f"{config_id}/")
         if resp.status_code in (200, 204):
             return {"success": True}
+
+        # If 404, try looking up config by hash to get the actual id
+        if resp.status_code == 404:
+            lookup = await mahsanet_api_call("GET", f"?hash={config_id}&limit=1")
+            if lookup.status_code == 200:
+                results = lookup.json().get("results", [])
+                if results:
+                    actual_id = results[0].get("id", results[0].get("hash", ""))
+                    if actual_id and actual_id != config_id:
+                        resp2 = await mahsanet_api_call("DELETE", f"{actual_id}/")
+                        if resp2.status_code in (200, 204):
+                            return {"success": True}
+
         detail = f"MahsaNet API returned {resp.status_code}"
         try:
             detail += f": {resp.text[:200]}"

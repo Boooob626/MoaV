@@ -1024,7 +1024,7 @@
                         <td style="font-family:var(--mono);font-size:0.7rem;">${typeof c.health_status_percent === 'number' ? c.health_status_percent + '%' : (typeof c.health_status_percent === 'string' ? c.health_status_percent + '%' : '—')}</td>
                         <td style="font-family:var(--mono);font-size:0.7rem;">${c.num_consumed || 0}</td>
                         <td style="text-align:right;">
-                            <button class="btn-del" onclick="deleteMahsaConfig('${c.id || c.hash}')">del</button>
+                            <button class="btn-del" onclick="confirmDel(this, '${c.id || c.hash}')">del</button>
                         </td>
                     </tr>
                 `).join('');
@@ -1033,8 +1033,18 @@
             }
         }
 
+        function confirmDel(btn, id) {
+            if (btn.dataset.confirmed) {
+                deleteMahsaConfig(id);
+                return;
+            }
+            btn.dataset.confirmed = '1';
+            btn.textContent = 'sure?';
+            btn.style.color = 'var(--red)';
+            setTimeout(() => { btn.textContent = 'del'; btn.style.color = ''; delete btn.dataset.confirmed; }, 3000);
+        }
+
         async function deleteMahsaConfig(hash) {
-            if (!confirm('Remove this config from MahsaNet?')) return;
             try {
                 const resp = await fetch(`/api/mahsanet/configs/${hash}`, { method: 'DELETE' });
                 if (resp.ok) {

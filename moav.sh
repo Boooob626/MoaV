@@ -3381,7 +3381,7 @@ cmd_donate_mahsanet_remove() {
     fi
 
     local ids
-    ids=$(echo "$body" | jq -r '.results[].hash')
+    ids=$(echo "$body" | jq -r '.results[] | (.id // .hash)')
     local removed=0
     local failed=0
 
