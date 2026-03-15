@@ -3042,7 +3042,7 @@ show_usage() {
     echo "  user add NAME [NAME2...] [-p]  Add user(s) (--package creates zip)"
     echo "  user add --batch N [--prefix P]  Create N users (e.g., user01, user02...)"
     echo "  admin password        Reset admin dashboard password"
-    echo "  donate mahsanet       Donate configs to MahsaServer.com"
+    echo "  donate                Donate VPN configs to help bypass censorship"
     echo "  user revoke NAME      Revoke a user"
     echo "  user package NAME     Create distributable zip for existing user"
     echo "  build [SERVICE|PROFILE] [--no-cache]  Build services or profile"
@@ -3085,7 +3085,7 @@ show_usage() {
     echo "  moav test joe                  # Test connectivity for user joe"
     echo "  moav test joe -v               # Test with verbose output for debugging"
     echo "  moav client connect joe        # Connect as user joe (exposes proxy)"
-    echo "  moav donate mahsanet           # Donate configs to MahsaServer.com"
+    echo "  moav donate                    # Donate configs to MahsaServer.com"
     echo ""
     echo "Migration:"
     echo "  moav export                    # Backup to moav-backup-TIMESTAMP.tar.gz"
@@ -3314,7 +3314,7 @@ cmd_donate_mahsanet_list() {
 
     echo ""
     info "Total: $count config(s)"
-    echo -e "  ${DIM}To delete specific configs: moav donate mahsanet --delete${NC}"
+    echo -e "  ${DIM}To delete specific configs: moav donate delete${NC}"
 }
 
 cmd_donate_mahsanet_delete() {
@@ -3511,74 +3511,18 @@ cmd_donate_mahsanet_remove() {
     [[ $failed -gt 0 ]] && warn "$failed config(s) failed to remove"
 }
 
-cmd_donate_mahsanet() {
-    local action=""
-
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --setup|setup)     action="setup"; shift ;;
-            --list|list)       action="list"; shift ;;
-            --status|status)   action="status"; shift ;;
-            --delete|delete)   action="delete"; shift ;;
-            --remove|remove)   action="remove"; shift ;;
-            --help|-h|help)    action="help"; shift ;;
-            *)                 shift ;;
-        esac
-    done
-
-    if [[ "$action" == "help" ]]; then
-        echo "Usage: moav donate mahsanet [options]"
-        echo ""
-        echo "Donate VPN configs to MahsaServer.com (Mahsa VPN, 2M+ users in Iran)"
-        echo ""
-        echo "Options:"
-        echo "  (none)      Generate users and donate configs"
-        echo "  --setup     Set up MahsaNet API key"
-        echo "  --list      List donated configs"
-        echo "  --status    Show donation status"
-        echo "  --delete    Select and delete specific configs"
-        echo "  --remove    Remove all donated configs"
-        echo "  --help      Show this help message"
-        echo ""
-        echo "Configuration (.env):"
-        echo "  MAHSANET_API_KEY         API key from mahsaserver.com/user/api"
-        echo "  MAHSANET_PROTOCOLS       Protocols to donate (default: reality hysteria2)"
-        echo "  MAHSANET_POOL            Pool name (default: mahsa)"
-        echo ""
-        echo "Examples:"
-        echo "  moav donate mahsanet --setup      # Configure API key"
-        echo "  moav donate mahsanet              # Generate users and donate"
-        echo "  moav donate mahsanet --list       # List donated configs"
-        echo "  moav donate mahsanet --remove     # Remove all donated configs"
-        return 0
-    fi
-
-    # Setup doesn't need API key validation
-    if [[ "$action" == "setup" ]]; then
-        cmd_donate_mahsanet_setup
-        return
-    fi
-
-    # All other actions need a valid API key
+_get_donate_api_key() {
     local api_key=""
     if [[ -f ".env" ]]; then
         api_key=$(grep -E "^MAHSANET_API_KEY=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
     fi
-
     if [[ -z "$api_key" ]]; then
-        error "MahsaNet API key not configured"
+        error "No donation service configured"
         echo ""
-        echo "  Run: moav donate mahsanet --setup"
+        echo "  Run: moav donate setup"
         return 1
     fi
-
-    case "$action" in
-        list)   cmd_donate_mahsanet_list "$api_key" ;;
-        status) cmd_donate_mahsanet_status "$api_key" ;;
-        delete) cmd_donate_mahsanet_delete "$api_key" ;;
-        remove) cmd_donate_mahsanet_remove "$api_key" ;;
-        *)      cmd_donate_mahsanet_donate "$api_key" ;;
-    esac
+    echo "$api_key"
 }
 
 cmd_donate_mahsanet_donate() {
@@ -3766,25 +3710,83 @@ cmd_donate_mahsanet_donate() {
 }
 
 cmd_donate() {
-    local service="${1:-}"
+    local action="${1:-}"
     shift 1 2>/dev/null || shift $#
 
-    case "$service" in
-        mahsanet|mahsa)
-            cmd_donate_mahsanet "$@"
+    case "$action" in
+        setup|--setup)
+            cmd_donate_mahsanet_setup
             ;;
-        *)
-            echo "Usage: moav donate <service> [options]"
+        list|--list)
+            local key; key=$(_get_donate_api_key) || return 1
+            cmd_donate_mahsanet_list "$key"
+            ;;
+        status|--status)
+            local key; key=$(_get_donate_api_key) || return 1
+            cmd_donate_mahsanet_status "$key"
+            ;;
+        delete|--delete)
+            local key; key=$(_get_donate_api_key) || return 1
+            cmd_donate_mahsanet_delete "$key"
+            ;;
+        remove|--remove)
+            local key; key=$(_get_donate_api_key) || return 1
+            cmd_donate_mahsanet_remove "$key"
+            ;;
+        help|--help|-h)
+            echo "Usage: moav donate [command]"
             echo ""
-            echo "Services:"
-            echo "  mahsanet    Donate configs to MahsaServer.com (Mahsa VPN, 2M+ users)"
+            echo "Donate VPN configs to help people bypass censorship."
             echo ""
             echo "Commands:"
-            echo "  moav donate mahsanet              Generate users and donate configs"
-            echo "  moav donate mahsanet --setup      Set up MahsaNet API key"
-            echo "  moav donate mahsanet --list       List donated configs"
-            echo "  moav donate mahsanet --status     Show donation status"
-            echo "  moav donate mahsanet --remove     Remove all donated configs"
+            echo "  (none)     Interactive donation wizard"
+            echo "  setup      Configure donation service API keys"
+            echo "  list       List donated configs"
+            echo "  status     Show donation statistics"
+            echo "  delete     Select and delete specific configs"
+            echo "  remove     Remove all donated configs"
+            echo "  help       Show this help"
+            echo ""
+            echo "Services:"
+            echo "  MahsaNet   mahsaserver.com — Mahsa VPN (2M+ users in Iran)"
+            echo ""
+            echo "Configuration (.env):"
+            echo "  MAHSANET_API_KEY         API token from mahsaserver.com/user/api"
+            echo "  MAHSANET_PROTOCOLS       Protocols to donate (default: reality hysteria2)"
+            echo "  MAHSANET_POOL            Pool name (default: mahsa)"
+            echo ""
+            echo "Examples:"
+            echo "  moav donate              Start donation wizard"
+            echo "  moav donate setup        Configure MahsaNet API key"
+            echo "  moav donate list         Show all donated configs"
+            echo "  moav donate delete       Remove specific configs"
+            ;;
+        *)
+            # Wizard flow: check configured services and donate
+            local api_key=""
+            if [[ -f ".env" ]]; then
+                api_key=$(grep -E "^MAHSANET_API_KEY=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
+            fi
+
+            if [[ -z "$api_key" ]]; then
+                print_section "Donate VPN Configs"
+                echo ""
+                echo "  Donate VPN configs to help people bypass internet censorship."
+                echo ""
+                echo "  Available services:"
+                echo -e "    ${DIM}○${NC} MahsaNet (mahsaserver.com) — ${DIM}not configured${NC}"
+                echo ""
+                echo -e "  Run ${CYAN}moav donate setup${NC} to configure a donation service."
+                return 0
+            fi
+
+            # Auto-select MahsaNet (only configured service)
+            print_section "Donate VPN Configs"
+            echo ""
+            echo -e "  Service: ${GREEN}MahsaNet${NC} (mahsaserver.com — 2M+ users in Iran)"
+            echo ""
+
+            cmd_donate_mahsanet_donate "$api_key"
             ;;
     esac
 }
