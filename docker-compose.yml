@@ -668,7 +668,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - moav_geoip:/geoip:ro
+      - moav_state:/state:ro
     environment:
+      - CLASH_TOKEN=${CLASH_API_SECRET:-}
       - TZ=${TZ:-UTC}
     expose:
       - "9102"

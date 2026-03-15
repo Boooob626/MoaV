@@ -3,17 +3,24 @@
 Sing-box User Prometheus Exporter
 
 Parses sing-box container logs to extract user connection metrics.
-Log format: ... inbound/protocol[tag]: [username] inbound connection from IP:port
+Polls Clash API for source IPs to provide GeoIP country metrics.
 """
 
 import re
+import os
 import time
 import subprocess
 import threading
+import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
-from datetime import datetime
 from geoip import GeoIPLookup
+
+try:
+    from urllib.request import urlopen, Request
+    from urllib.error import URLError
+except ImportError:
+    urlopen = None
 
 # Metrics storage
 user_connections = defaultdict(int)  # user -> total connections
@@ -29,11 +36,13 @@ metrics_lock = threading.Lock()
 # GeoIP lookup
 geoip = GeoIPLookup()
 
-# Regex to parse connection lines with usernames and source IP
-# Example: inbound/hysteria2[hysteria2-in]: [user] inbound connection from 1.2.3.4:12345
-USER_IP_PATTERN = re.compile(
-    r'\[([^\]]+)\]\s*inbound connection(?:\s+from\s+(\d+\.\d+\.\d+\.\d+))?'
-)
+# Clash API config
+CLASH_API = os.environ.get("CLASH_API", "http://moav-sing-box:9090")
+CLASH_SECRET = ""
+
+# Regex to parse connection lines with usernames
+# Example: [newaidin] inbound connection to vas.samsungapps.com:443
+USER_PATTERN = re.compile(r'\[([^\]]+)\]\s*inbound connection')
 
 # Regex to extract protocol from inbound name
 # Example: inbound/hysteria2[hysteria2-in]: [user]
@@ -42,32 +51,47 @@ PROTOCOL_PATTERN = re.compile(r'inbound/(\w+)\[')
 # Active window in seconds (5 minutes)
 ACTIVE_WINDOW = 300
 
+# GeoIP poll interval (seconds)
+GEOIP_POLL_INTERVAL = 30
+
+
+def load_clash_secret():
+    """Try to load the Clash API secret from state volume."""
+    global CLASH_SECRET
+    for path in ["/state/clash_api_secret", "/project/state/clash_api_secret"]:
+        try:
+            with open(path) as f:
+                CLASH_SECRET = f.read().strip()
+                print(f"Loaded Clash API secret from {path}")
+                return
+        except FileNotFoundError:
+            continue
+    # Try environment
+    CLASH_SECRET = os.environ.get("CLASH_TOKEN", "")
+    if CLASH_SECRET:
+        print("Loaded Clash API secret from environment")
+
+
 def parse_log_line(line: str) -> bool:
     """Parse a log line and update metrics. Returns True if parsed."""
-    user_match = USER_IP_PATTERN.search(line)
+    user_match = USER_PATTERN.search(line)
     if not user_match:
         return False
 
     username = user_match.group(1)
-    source_ip = user_match.group(2)  # may be None
     now = time.time()
 
     # Extract protocol if present
     protocol_match = PROTOCOL_PATTERN.search(line)
     protocol = protocol_match.group(1) if protocol_match else "unknown"
 
-    # GeoIP lookup
-    country = geoip.lookup(source_ip) if source_ip else "XX"
-
     with metrics_lock:
         user_connections[username] += 1
         user_last_seen[username] = now
         protocol_connections[protocol] += 1
-        country_connections[country] += 1
-        if source_ip:
-            user_country[username] = country
 
     return True
+
 
 def update_active_users():
     """Update the set of active users based on last seen time."""
@@ -80,6 +104,49 @@ def update_active_users():
             user for user, last_seen in user_last_seen.items()
             if last_seen > cutoff
         }
+
+
+def poll_clash_connections():
+    """Poll Clash API /connections for source IPs and update country metrics."""
+    if urlopen is None:
+        return
+
+    while True:
+        try:
+            url = f"{CLASH_API}/connections"
+            headers = {}
+            if CLASH_SECRET:
+                headers["Authorization"] = f"Bearer {CLASH_SECRET}"
+            req = Request(url, headers=headers)
+            resp = urlopen(req, timeout=5)
+            data = json.loads(resp.read().decode())
+
+            seen_countries = defaultdict(int)
+            seen_user_country = {}
+
+            for conn in data.get("connections", []):
+                meta = conn.get("metadata", {})
+                source_ip = meta.get("sourceIP", "")
+                # sing-box Clash API puts the username in metadata.inboundUser
+                user = meta.get("inboundUser", "")
+
+                if source_ip:
+                    country = geoip.lookup(source_ip)
+                    seen_countries[country] += 1
+                    if user:
+                        seen_user_country[user] = country
+
+            with metrics_lock:
+                # Merge into running totals
+                for country, count in seen_countries.items():
+                    country_connections[country] += count
+                user_country.update(seen_user_country)
+
+        except Exception as e:
+            pass  # Silently retry
+
+        time.sleep(GEOIP_POLL_INTERVAL)
+
 
 def tail_docker_logs():
     """Tail sing-box container logs and parse user connections."""
@@ -107,11 +174,13 @@ def tail_docker_logs():
         print("Log tailer disconnected, retrying in 5s...")
         time.sleep(5)
 
+
 def periodic_update():
     """Periodically update active users set."""
     while True:
         time.sleep(60)
         update_active_users()
+
 
 class MetricsHandler(BaseHTTPRequestHandler):
     """HTTP handler for Prometheus metrics endpoint."""
@@ -189,8 +258,12 @@ class MetricsHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+
 def main():
     port = 9102
+
+    # Load Clash API secret
+    load_clash_secret()
 
     # Start log tailer in background thread
     tailer_thread = threading.Thread(target=tail_docker_logs, daemon=True)
@@ -199,6 +272,11 @@ def main():
     # Start periodic update thread
     update_thread = threading.Thread(target=periodic_update, daemon=True)
     update_thread.start()
+
+    # Start GeoIP poller (uses Clash API for source IPs)
+    geoip_thread = threading.Thread(target=poll_clash_connections, daemon=True)
+    geoip_thread.start()
+    print("GeoIP: polling Clash API for source IPs every 30s")
 
     # Start HTTP server
     server = HTTPServer(('0.0.0.0', port), MetricsHandler)
@@ -210,6 +288,7 @@ def main():
     except KeyboardInterrupt:
         print("\nShutting down...")
         server.shutdown()
+
 
 if __name__ == '__main__':
     main()
