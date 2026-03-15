@@ -157,9 +157,6 @@ services:
       - DNSTT_DOMAIN=${DNSTT_SUBDOMAIN:-t}.${DOMAIN}
       - DNSTT_UPSTREAM=sing-box:1080
       - TZ=${TZ:-UTC}
-    depends_on:
-      sing-box:
-        condition: service_healthy
     profiles:
       - dnstunnel
       - all
@@ -183,9 +180,6 @@ services:
       - SLIPSTREAM_DOMAIN=${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}
       - SLIPSTREAM_UPSTREAM=sing-box:1080
       - TZ=${TZ:-UTC}
-    depends_on:
-      sing-box:
-        condition: service_healthy
     profiles:
       - dnstunnel
       - all
@@ -420,6 +414,8 @@ services:
       - DOMAIN=${DOMAIN}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - TZ=${TZ:-UTC}
+    cap_add:
+      - NET_ADMIN
     depends_on:
       certbot:
         condition: service_completed_successfully
