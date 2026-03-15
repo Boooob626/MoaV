@@ -15,6 +15,7 @@ volumes:
   moav_grafana:
   moav_snowflake_logs:
   moav_webroot:
+  moav_geoip:
 
 services:
   # ===========================================================================
@@ -660,14 +661,15 @@ services:
   # Sing-box User Exporter - parses sing-box logs for user connection metrics
   singbox-exporter:
     build:
-      context: ./exporters/singbox
-      dockerfile: Dockerfile
+      context: ./exporters
+      dockerfile: singbox/Dockerfile
     container_name: moav-singbox-exporter
     restart: unless-stopped
     networks:
       - moav_net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
     expose:
@@ -698,14 +700,15 @@ services:
   # Xray User Exporter - parses Xray logs for XHTTP user connection metrics
   xray-exporter:
     build:
-      context: ./exporters/xray
-      dockerfile: Dockerfile
+      context: ./exporters
+      dockerfile: xray/Dockerfile
     container_name: moav-xray-exporter
     restart: unless-stopped
     networks:
       - moav_net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
     expose:
@@ -717,8 +720,8 @@ services:
   # WireGuard Exporter - custom exporter using docker exec
   wireguard-exporter:
     build:
-      context: ./exporters/wireguard
-      dockerfile: Dockerfile
+      context: ./exporters
+      dockerfile: wireguard/Dockerfile
     container_name: moav-wireguard-exporter
     restart: unless-stopped
     networks:
@@ -726,6 +729,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./configs/wireguard:/etc/wireguard:ro
+      - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
     profiles:
@@ -735,8 +739,8 @@ services:
   # AmneziaWG Exporter - custom per-peer traffic metrics
   amneziawg-exporter:
     build:
-      context: ./exporters/amneziawg
-      dockerfile: Dockerfile
+      context: ./exporters
+      dockerfile: amneziawg/Dockerfile
     container_name: moav-amneziawg-exporter
     restart: unless-stopped
     networks:
@@ -744,11 +748,31 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./configs/amneziawg:/etc/amneziawg:ro
+      - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
     profiles:
       - monitoring
       - all
+
+  # GeoIP Database Updater - downloads DB-IP Lite country database
+  geoip-updater:
+    image: python:3.11-alpine
+    container_name: moav-geoip-updater
+    volumes:
+      - moav_geoip:/geoip
+    entrypoint: /bin/sh
+    command: >
+      -c '
+        apk add --no-cache curl > /dev/null 2>&1 &&
+        MONTH=$$(date +%Y-%m) &&
+        URL="https://download.db-ip.com/free/dbip-country-lite-$${MONTH}.mmdb.gz" &&
+        echo "Downloading GeoIP database for $${MONTH}..." &&
+        curl -fsSL "$$URL" | gunzip > /geoip/dbip-country-lite.mmdb &&
+        echo "GeoIP database updated successfully ($${MONTH})"
+      '
+    profiles:
+      - setup
 
   # ===========================================================================
   # BOOTSTRAP: First-run initialization
