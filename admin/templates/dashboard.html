@@ -1041,7 +1041,17 @@
             btn.dataset.confirmed = '1';
             btn.textContent = 'sure?';
             btn.style.color = 'var(--red)';
-            setTimeout(() => { btn.textContent = 'del'; btn.style.color = ''; delete btn.dataset.confirmed; }, 3000);
+            btn.style.borderColor = 'var(--red)';
+            btn.style.background = 'var(--red-dim)';
+            btn.style.fontWeight = '700';
+            setTimeout(() => {
+                btn.textContent = 'del';
+                btn.style.color = '';
+                btn.style.borderColor = '';
+                btn.style.background = '';
+                btn.style.fontWeight = '';
+                delete btn.dataset.confirmed;
+            }, 3000);
         }
 
         async function deleteMahsaConfig(hash) {

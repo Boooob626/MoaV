@@ -695,7 +695,7 @@ async def mahsanet_api_call(method: str, endpoint: str = "", data: dict = None):
         "Authorization": f"Token {MAHSANET_API_KEY}",
         "Content-Type": "application/json",
     }
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         if method == "GET":
             resp = await client.get(url, headers=headers)
         elif method == "POST":

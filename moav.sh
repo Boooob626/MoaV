@@ -3519,6 +3519,7 @@ cmd_donate_mahsanet() {
             --setup)   action="setup"; shift ;;
             --list)    action="list"; shift ;;
             --status)  action="status"; shift ;;
+            --delete)  action="delete"; shift ;;
             --remove)  action="remove"; shift ;;
             --help|-h) action="help"; shift ;;
             *)         shift ;;
