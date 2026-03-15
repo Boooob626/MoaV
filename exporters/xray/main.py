@@ -6,6 +6,7 @@ Parses Xray container logs for connection metrics and queries the
 Xray Stats API (gRPC via dokodemo-door) for per-user traffic data.
 """
 
+import json
 import re
 import time
 import subprocess
@@ -37,10 +38,6 @@ IP_EMAIL_PATTERN = re.compile(
 # Fallback patterns (without IP)
 EMAIL_PATTERN = re.compile(r'email:\s*(\S+?)@moav')
 BRACKET_PATTERN = re.compile(r'\[([^\]]+?)@moav\]')
-
-# Regex to parse xray api statsquery output (protobuf text format)
-STAT_NAME_PATTERN = re.compile(r'name:\s*"([^"]+)"')
-STAT_VALUE_PATTERN = re.compile(r'value:\s*(\d+)')
 
 # Active window in seconds (5 minutes)
 ACTIVE_WINDOW = 300
@@ -144,36 +141,33 @@ def query_xray_stats():
 
 
 def parse_stats_output(output: str):
-    """Parse protobuf text format stats output from xray api statsquery (cumulative values)."""
+    """Parse JSON stats output from xray api statsquery (cumulative values)."""
     global stats_query_count
-    current_name = None
     parsed_count = 0
 
-    for line in output.splitlines():
-        line = line.strip()
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        stats_query_count += 1
+        if stats_query_count <= 3:
+            print(f"Stats query #{stats_query_count}: failed to parse JSON")
+        return
 
-        name_match = STAT_NAME_PATTERN.search(line)
-        if name_match:
-            current_name = name_match.group(1)
-            continue
+    for entry in data.get("stat", []):
+        name = entry.get("name", "")
+        value = entry.get("value", 0)
 
-        value_match = STAT_VALUE_PATTERN.search(line)
-        if value_match and current_name:
-            value = int(value_match.group(1))
+        parts = name.split(">>>")
+        if len(parts) == 4 and parts[0] == "user" and parts[2] == "traffic":
+            username = parts[1].replace("@moav", "")
+            direction = parts[3]
 
-            parts = current_name.split(">>>")
-            if len(parts) == 4 and parts[0] == "user" and parts[2] == "traffic":
-                username = parts[1].replace("@moav", "")
-                direction = parts[3]
-
-                with metrics_lock:
-                    if direction == "uplink":
-                        user_upload[username] = value  # cumulative, set directly
-                    elif direction == "downlink":
-                        user_download[username] = value  # cumulative, set directly
-                parsed_count += 1
-
-            current_name = None
+            with metrics_lock:
+                if direction == "uplink":
+                    user_upload[username] = value
+                elif direction == "downlink":
+                    user_download[username] = value
+            parsed_count += 1
 
     stats_query_count += 1
     if stats_query_count <= 3 or stats_query_count % 100 == 0:
