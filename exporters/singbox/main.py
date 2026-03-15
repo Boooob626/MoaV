@@ -56,20 +56,33 @@ GEOIP_POLL_INTERVAL = 30
 
 
 def load_clash_secret():
-    """Try to load the Clash API secret from state volume."""
+    """Try to load the Clash API secret from state volume or environment."""
     global CLASH_SECRET
-    for path in ["/state/clash_api_secret", "/project/state/clash_api_secret"]:
+
+    # Try state volume (source of truth from bootstrap)
+    for path in ["/state/keys/clash-api.env", "/state/clash_api_secret"]:
         try:
             with open(path) as f:
-                CLASH_SECRET = f.read().strip()
-                print(f"Loaded Clash API secret from {path}")
-                return
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("CLASH_API_SECRET="):
+                        CLASH_SECRET = line.split("=", 1)[1].strip()
+                        print(f"Loaded Clash API secret from {path}")
+                        return
+                    elif not line.startswith("#") and not "=" in line and line:
+                        # Plain text file (just the secret)
+                        CLASH_SECRET = line
+                        print(f"Loaded Clash API secret from {path}")
+                        return
         except FileNotFoundError:
             continue
-    # Try environment
+
+    # Fall back to environment
     CLASH_SECRET = os.environ.get("CLASH_TOKEN", "")
     if CLASH_SECRET:
         print("Loaded Clash API secret from environment")
+    else:
+        print("WARNING: No Clash API secret found — GeoIP country tracking will not work")
 
 
 def parse_log_line(line: str) -> bool:
@@ -118,10 +131,9 @@ def poll_clash_connections():
         poll_count += 1
         try:
             url = f"{CLASH_API}/connections"
-            headers = {}
             if CLASH_SECRET:
-                headers["Authorization"] = f"Bearer {CLASH_SECRET}"
-            req = Request(url, headers=headers)
+                url += f"?token={CLASH_SECRET}"
+            req = Request(url)
             resp = urlopen(req, timeout=5)
             data = json.loads(resp.read().decode())
 

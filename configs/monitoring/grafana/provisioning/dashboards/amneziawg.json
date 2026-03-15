@@ -732,7 +732,7 @@
           "sort": "none"
         }
       },
-      "title": "Connections by Country",
+      "title": "Peers by Country",
       "type": "piechart",
       "targets": [
         {
@@ -740,7 +740,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amneziawg_active_peers_by_country",
+          "expr": "count by (country) (amneziawg_peer_active)",
           "legendFormat": "{{country}}",
           "refId": "A"
         }
@@ -822,7 +822,7 @@
           }
         ]
       },
-      "title": "Active Peers by Country",
+      "title": "Peers by Country",
       "type": "table",
       "targets": [
         {
@@ -830,7 +830,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amneziawg_active_peers_by_country",
+          "expr": "count by (country) (amneziawg_peer_active)",
           "format": "table",
           "instant": true,
           "legendFormat": "",

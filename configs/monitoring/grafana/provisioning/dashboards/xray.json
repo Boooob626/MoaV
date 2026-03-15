@@ -1334,7 +1334,7 @@
           }
         ]
       },
-      "title": "Active Users by Country",
+      "title": "Users by Country",
       "type": "table",
       "targets": [
         {
@@ -1342,7 +1342,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "xray_active_users_by_country",
+          "expr": "xray_connections_by_country",
           "format": "table",
           "instant": true,
           "legendFormat": "",
