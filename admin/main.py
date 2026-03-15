@@ -334,6 +334,89 @@ async def fetch_conduit_stats():
     return stats
 
 
+PROMETHEUS_URL = "http://prometheus:9091"
+
+
+async def fetch_aggregate_stats():
+    """Fetch aggregated stats across all protocols from Prometheus."""
+    stats = {
+        "active_users": 0,
+        "total_users": 0,
+        "total_connections": 0,
+        "protocols": {},  # protocol_name -> {active_users, connections}
+    }
+
+    queries = {
+        # Active users per protocol
+        "singbox_active": "singbox_active_users",
+        "xray_active": "xray_active_users",
+        "wg_active": 'count(wireguard_peer_active == 1)',
+        "awg_active": 'count(amneziawg_peer_active == 1)',
+        # Total users per protocol
+        "singbox_total": "singbox_total_users",
+        "xray_total": "xray_total_users",
+        "wg_total": "wireguard_peers_total",
+        "awg_total": "amneziawg_peers_total",
+        # Connections
+        "singbox_conns": "singbox_total_connections",
+        "xray_conns": "xray_total_connections",
+        # Traffic
+        "xray_up": "xray_upload_bytes_total",
+        "xray_down": "xray_download_bytes_total",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for key, query in queries.items():
+                try:
+                    resp = await client.get(
+                        f"{PROMETHEUS_URL}/api/v1/query",
+                        params={"query": query}
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        results = data.get("data", {}).get("result", [])
+                        if results:
+                            queries[key] = float(results[0].get("value", [0, 0])[1])
+                        else:
+                            queries[key] = 0
+                    else:
+                        queries[key] = 0
+                except Exception:
+                    queries[key] = 0
+
+        stats["protocols"]["sing-box"] = {
+            "active": int(queries.get("singbox_active", 0) if isinstance(queries.get("singbox_active"), (int, float)) else 0),
+            "total": int(queries.get("singbox_total", 0) if isinstance(queries.get("singbox_total"), (int, float)) else 0),
+            "connections": int(queries.get("singbox_conns", 0) if isinstance(queries.get("singbox_conns"), (int, float)) else 0),
+        }
+        stats["protocols"]["xray"] = {
+            "active": int(queries.get("xray_active", 0) if isinstance(queries.get("xray_active"), (int, float)) else 0),
+            "total": int(queries.get("xray_total", 0) if isinstance(queries.get("xray_total"), (int, float)) else 0),
+            "connections": int(queries.get("xray_conns", 0) if isinstance(queries.get("xray_conns"), (int, float)) else 0),
+            "upload": queries.get("xray_up", 0) if isinstance(queries.get("xray_up"), (int, float)) else 0,
+            "download": queries.get("xray_down", 0) if isinstance(queries.get("xray_down"), (int, float)) else 0,
+        }
+        stats["protocols"]["wireguard"] = {
+            "active": int(queries.get("wg_active", 0) if isinstance(queries.get("wg_active"), (int, float)) else 0),
+            "total": int(queries.get("wg_total", 0) if isinstance(queries.get("wg_total"), (int, float)) else 0),
+        }
+        stats["protocols"]["amneziawg"] = {
+            "active": int(queries.get("awg_active", 0) if isinstance(queries.get("awg_active"), (int, float)) else 0),
+            "total": int(queries.get("awg_total", 0) if isinstance(queries.get("awg_total"), (int, float)) else 0),
+        }
+
+        for p in stats["protocols"].values():
+            stats["active_users"] += p.get("active", 0)
+            stats["total_users"] += p.get("total", 0)
+            stats["total_connections"] += p.get("connections", 0)
+
+    except Exception as e:
+        print(f"[admin] Prometheus query failed: {e}")
+
+    return stats
+
+
 def format_bytes(bytes_val):
     """Format bytes to human readable"""
     for unit in ["B", "KB", "MB", "GB", "TB"]:
@@ -369,6 +452,7 @@ async def dashboard(request: Request, username: str = Depends(verify_auth)):
     """Main dashboard page"""
     stats = await fetch_singbox_stats()
     conduit_stats = await fetch_conduit_stats()
+    agg_stats = await fetch_aggregate_stats()
     services = get_services_status()
     update_info = await check_for_updates()
 
@@ -402,6 +486,7 @@ async def dashboard(request: Request, username: str = Depends(verify_auth)):
         "update_available": update_info["update_available"],
         "latest_version": update_info["latest_version"],
         "current_version": update_info["current_version"],
+        "agg_stats": agg_stats,
         "mahsanet_configured": bool(MAHSANET_API_KEY),
         "mahsanet_protocols": MAHSANET_PROTOCOLS,
         "mahsanet_all_protocols": list(PROTOCOL_FILE_MAP.keys()),
