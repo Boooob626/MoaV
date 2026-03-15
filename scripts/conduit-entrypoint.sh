@@ -66,9 +66,12 @@ show_ryve_link() {
     echo ""
 } &
 
-# Run conduit in foreground
+# Fix volume ownership (volumes may be root-owned from previous runs)
+chown -R moav:moav "$CONDUIT_DATA_DIR" 2>/dev/null || true
+
+# Run conduit as non-root in foreground
 # Strip application timestamps (Docker already adds them)
-/app/conduit start \
+gosu moav /app/conduit start \
     -d "$CONDUIT_DATA_DIR" \
     -b "$CONDUIT_BANDWIDTH" \
     -m "$CONDUIT_MAX_COMMON_CLIENTS" \
