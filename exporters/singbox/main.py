@@ -78,9 +78,9 @@ def load_clash_secret():
             continue
 
     # Fall back to environment
-    CLASH_SECRET = os.environ.get("CLASH_TOKEN", "")
+    CLASH_SECRET = os.environ.get("CLASH_TOKEN", "").strip().strip('"').strip("'")
     if CLASH_SECRET:
-        print("Loaded Clash API secret from environment")
+        print(f"Loaded Clash API secret from environment ({len(CLASH_SECRET)} chars)")
     else:
         print("WARNING: No Clash API secret found — GeoIP country tracking will not work")
 
@@ -131,9 +131,9 @@ def poll_clash_connections():
         poll_count += 1
         try:
             url = f"{CLASH_API}/connections"
-            if CLASH_SECRET:
-                url += f"?token={CLASH_SECRET}"
             req = Request(url)
+            if CLASH_SECRET:
+                req.add_header("Authorization", "Bearer " + CLASH_SECRET)
             resp = urlopen(req, timeout=5)
             data = json.loads(resp.read().decode())
 
