@@ -121,10 +121,21 @@ def query_xray_stats():
             print(f"Stats API error (rc={result.returncode}): {stderr}")
             return
 
-        if not result.stdout.strip():
+        if stats_query_count == 0:
+            print(f"Stats API raw: stdout={len(result.stdout)} bytes, stderr={len(result.stderr)} bytes")
+            if result.stdout:
+                print(f"Stats stdout preview: {result.stdout[:200]}")
+            if result.stderr and not result.stdout:
+                print(f"Stats stderr preview: {result.stderr[:200]}")
+
+        # xray may output to stdout or stderr depending on version
+        output = result.stdout.strip()
+        if not output:
+            output = result.stderr.strip()
+        if not output:
             return
 
-        parse_stats_output(result.stdout)
+        parse_stats_output(output)
 
     except subprocess.TimeoutExpired:
         print("Stats API query timed out")
