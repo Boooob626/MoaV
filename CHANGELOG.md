@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-03-15
+
 ### Added
 - **GeoIP country labeling** — Country-level user distribution on Grafana dashboards
   - DB-IP Lite database (free, no API key, local lookups, zero external API calls at runtime)
@@ -26,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All 17 settings configurable from `.env` with documentation and upstream doc links
   - Telemt REST API exporter with Grafana panels (ME pool, DC availability, upstream quality, NAT type)
 - **Xray Stats API integration** — Per-user upload/download traffic metrics via `-reset` flag for correct incremental accumulation
-- **Admin dashboard collapsible sections** — MahsaNet and Users sections can be minimized to one-liner stats summaries
+- **Admin dashboard overhaul** — Collapsible MahsaNet/Users sections, Prometheus-backed aggregate stats (active users, total users, connections, traffic across all protocols), improved footer with server info and live uptime, toast notifications replacing browser alerts
+- **`moav donate` command refactor** — Flat command structure (`moav donate`, `moav donate setup`, `moav donate list`, `moav donate delete`) replacing nested `moav donate mahsanet --flag` pattern; interactive wizard with service auto-selection
 - **Bootstrap Docker optimization** — sing-box binary downloaded directly instead of pulling full container image (fixes hang in censored networks, [#75](https://github.com/shayanb/MoaV/issues/75)); scripts volume-mounted instead of COPY'd; cached image reuse on subsequent runs
 
 ### Fixed
@@ -42,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **dnstt/slipstream `depends on undefined service`** — Removed cross-profile `depends_on: sing-box` that broke `moav start dnstunnel` without proxy profile
 - **MahsaNet health display `{}%` / `[object Object]`** — Fixed CLI jq filter and dashboard JS to handle non-numeric `health_status_percent` from API
 - **wstunnel missing `setcap`** — Added `setcap cap_net_bind_service` for port 443 binding as non-root
+- **Xray user-add targeting wrong inbound** — `singbox-user-add.sh` added users to `inbounds[0]` (api-in) instead of the VLESS inbound; fixed to target by tag `vless-xhttp-reality`
+- **sing-box GeoIP Clash API auth** — Fixed secret loading from state volume (`/state/keys/clash-api.env`) and auth method (Bearer header)
 
 ### Changed
 - **Renamed** `telemt-api-exporter` to `telemt-exporter` across all files
@@ -789,7 +794,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uTLS fingerprint spoofing (Chrome)
 - Automatic short ID generation for Reality
 
-[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/shayanb/MoaV/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/shayanb/MoaV/compare/v1.4.7...v1.5.1
 [1.4.7]: https://github.com/shayanb/MoaV/compare/v1.4.5...v1.4.7
 [1.4.5]: https://github.com/shayanb/MoaV/compare/v1.4.4...v1.4.5
