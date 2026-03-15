@@ -3314,7 +3314,7 @@ cmd_donate_mahsanet_list() {
 
     echo ""
     info "Total: $count config(s)"
-    echo -e "  ${DIM}To delete specific configs: moav donate mahsanet delete${NC}"
+    echo -e "  ${DIM}To delete specific configs: moav donate mahsanet --delete${NC}"
 }
 
 cmd_donate_mahsanet_delete() {
@@ -3516,13 +3516,13 @@ cmd_donate_mahsanet() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --setup)   action="setup"; shift ;;
-            --list)    action="list"; shift ;;
-            --status)  action="status"; shift ;;
-            --delete)  action="delete"; shift ;;
-            --remove)  action="remove"; shift ;;
-            --help|-h) action="help"; shift ;;
-            *)         shift ;;
+            --setup|setup)     action="setup"; shift ;;
+            --list|list)       action="list"; shift ;;
+            --status|status)   action="status"; shift ;;
+            --delete|delete)   action="delete"; shift ;;
+            --remove|remove)   action="remove"; shift ;;
+            --help|-h|help)    action="help"; shift ;;
+            *)                 shift ;;
         esac
     done
 

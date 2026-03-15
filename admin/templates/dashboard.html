@@ -491,15 +491,22 @@
         }
         .btn-del {
             background: none;
-            border: 1px solid var(--red);
-            color: var(--red);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
             padding: 0.15rem 0.4rem;
             border-radius: 3px;
             cursor: pointer;
             font-family: var(--mono);
             font-size: 0.6rem;
+            transition: all 0.15s;
         }
-        .btn-del:hover { background: var(--red-dim); }
+        .btn-del:hover { color: var(--red); border-color: var(--red); }
+        .btn-del.confirming {
+            background: var(--red);
+            border-color: var(--red);
+            color: #fff;
+            font-weight: 700;
+        }
         .badge-active {
             color: var(--green);
             background: var(--green-dim);
@@ -1040,16 +1047,10 @@
             }
             btn.dataset.confirmed = '1';
             btn.textContent = 'sure?';
-            btn.style.color = 'var(--red)';
-            btn.style.borderColor = 'var(--red)';
-            btn.style.background = 'var(--red-dim)';
-            btn.style.fontWeight = '700';
+            btn.classList.add('confirming');
             setTimeout(() => {
                 btn.textContent = 'del';
-                btn.style.color = '';
-                btn.style.borderColor = '';
-                btn.style.background = '';
-                btn.style.fontWeight = '';
+                btn.classList.remove('confirming');
                 delete btn.dataset.confirmed;
             }, 3000);
         }

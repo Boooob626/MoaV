@@ -927,13 +927,8 @@ async def mahsanet_delete_config(config_id: str, _: str = Depends(verify_auth)):
                 return {"success": True}
             last_resp = resp
 
-        detail = f"MahsaNet delete failed for hash={config_id}. The API may not support deletion by hash — contact MahsaNet support."
-        if last_resp:
-            try:
-                detail += f" (HTTP {last_resp.status_code}: {last_resp.text[:150]})"
-            except Exception:
-                pass
-        raise HTTPException(status_code=last_resp.status_code if last_resp else 500, detail=detail)
+        detail = "Delete not supported — MahsaNet API does not expose the required config ID. Use the MahsaNet web dashboard to delete configs."
+        raise HTTPException(status_code=422, detail=detail)
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"MahsaNet API unreachable: {e}")
 
