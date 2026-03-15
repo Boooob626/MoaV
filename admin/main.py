@@ -32,6 +32,10 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
 ADMIN_IP_WHITELIST = os.environ.get("ADMIN_IP_WHITELIST", "").split(",")
 ADMIN_IP_WHITELIST = [ip.strip() for ip in ADMIN_IP_WHITELIST if ip.strip()]
 
+SERVER_IP = os.environ.get("SERVER_IP", "")
+DOMAIN = os.environ.get("DOMAIN", "")
+PROCESS_START_TIME = time.time()
+
 SINGBOX_API = "http://moav-sing-box:9090"
 CLASH_SECRET = ""
 
@@ -393,6 +397,9 @@ async def dashboard(request: Request, username: str = Depends(verify_auth)):
         "mahsanet_configured": bool(MAHSANET_API_KEY),
         "mahsanet_protocols": MAHSANET_PROTOCOLS,
         "mahsanet_all_protocols": list(PROTOCOL_FILE_MAP.keys()),
+        "server_ip": SERVER_IP,
+        "domain": DOMAIN,
+        "uptime_seconds": int(time.time() - PROCESS_START_TIME),
     })
 
 

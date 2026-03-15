@@ -490,6 +490,8 @@ services:
     environment:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_IP_WHITELIST=${ADMIN_IP_WHITELIST:-}
+      - SERVER_IP=${SERVER_IP:-}
+      - DOMAIN=${DOMAIN:-}
       - MAHSANET_API_KEY=${MAHSANET_API_KEY:-}
       - MAHSANET_PROTOCOLS=${MAHSANET_PROTOCOLS:-reality hysteria2}
       - MAHSANET_POOL=${MAHSANET_POOL:-mahsa}
