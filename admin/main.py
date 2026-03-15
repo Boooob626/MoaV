@@ -900,17 +900,40 @@ async def mahsanet_delete_config(config_id: str, _: str = Depends(verify_auth)):
         if resp.status_code in (200, 204):
             return {"success": True}
 
-        # If 404, try looking up config by hash to get the actual id
+        # If 404, look up the config to find the correct identifier
         if resp.status_code == 404:
+            # Try GET single config (might return id field)
+            get_resp = await mahsanet_api_call("GET", f"{config_id}/")
+            if get_resp.status_code == 200:
+                config_data = get_resp.json()
+                actual_id = config_data.get("id", "")
+                if actual_id and actual_id != config_id:
+                    resp2 = await mahsanet_api_call("DELETE", f"{actual_id}/")
+                    if resp2.status_code in (200, 204):
+                        return {"success": True}
+
+            # Try searching by hash filter to find available fields
             lookup = await mahsanet_api_call("GET", f"?hash={config_id}&limit=1")
             if lookup.status_code == 200:
                 results = lookup.json().get("results", [])
                 if results:
-                    actual_id = results[0].get("id", results[0].get("hash", ""))
-                    if actual_id and actual_id != config_id:
-                        resp2 = await mahsanet_api_call("DELETE", f"{actual_id}/")
-                        if resp2.status_code in (200, 204):
-                            return {"success": True}
+                    # Try any identifier field we can find
+                    for field in ["id", "pk", "slug", "uuid"]:
+                        actual_id = results[0].get(field)
+                        if actual_id and str(actual_id) != config_id:
+                            resp3 = await mahsanet_api_call("DELETE", f"{actual_id}/")
+                            if resp3.status_code in (200, 204):
+                                return {"success": True}
+
+        # Log available fields for debugging
+        try:
+            lookup_debug = await mahsanet_api_call("GET", f"?hash={config_id}&limit=1")
+            if lookup_debug.status_code == 200:
+                results = lookup_debug.json().get("results", [])
+                if results:
+                    print(f"[MahsaNet] Config fields for hash={config_id}: {list(results[0].keys())}")
+        except Exception:
+            pass
 
         detail = f"MahsaNet API returned {resp.status_code}"
         try:
