@@ -3415,6 +3415,7 @@ cmd_donate_mahsanet_delete() {
     echo ""
     success "Removed $removed config(s) from MahsaNet"
     [[ $failed -gt 0 ]] && warn "$failed config(s) failed to remove"
+}
 
 cmd_donate_mahsanet_status() {
     local api_key="$1"
