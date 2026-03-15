@@ -61,7 +61,7 @@ fi
 
 # Domainless mode notice
 if [[ -z "${DOMAIN:-}" ]]; then
-    local _domainless_protos="Reality, WireGuard, AmneziaWG, Telegram MTProxy, Admin, Conduit, Snowflake"
+    _domainless_protos="Reality, WireGuard, AmneziaWG, Telegram MTProxy, Admin, Conduit, Snowflake"
     [[ "${ENABLE_XHTTP:-true}" == "true" ]] && _domainless_protos="Reality, XHTTP, WireGuard, AmneziaWG, Telegram MTProxy, Admin, Conduit, Snowflake"
     log_info "Running in domainless mode ($_domainless_protos)"
 
