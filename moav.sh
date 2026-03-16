@@ -3723,8 +3723,8 @@ _format_bytes_sh() {
 
 _query_conduit_metrics() {
     local metrics
-    metrics=$(docker exec moav-conduit curl -sf http://localhost:9090/metrics 2>/dev/null) || \
-    metrics=$(docker exec moav-conduit wget -qO- http://localhost:9090/metrics 2>/dev/null) || return 1
+    metrics=$(docker exec moav-conduit curl -sf http://127.0.0.1:9090/metrics 2>/dev/null) || \
+    metrics=$(docker exec moav-conduit wget -qO- http://127.0.0.1:9090/metrics 2>/dev/null) || return 1
     local connected
     connected=$(echo "$metrics" | grep "^conduit_connected_clients " | awk '{print $2}' | cut -d. -f1)
     local up_bytes
@@ -3736,8 +3736,8 @@ _query_conduit_metrics() {
 
 _query_snowflake_metrics() {
     local metrics
-    metrics=$(docker exec moav-snowflake-exporter wget -qO- http://localhost:8080/metrics 2>/dev/null) || \
-    metrics=$(docker exec moav-snowflake-exporter curl -sf http://localhost:8080/metrics 2>/dev/null) || return 1
+    metrics=$(docker exec moav-snowflake-exporter wget -qO- http://127.0.0.1:8080/metrics 2>/dev/null) || \
+    metrics=$(docker exec moav-snowflake-exporter curl -sf http://127.0.0.1:8080/metrics 2>/dev/null) || return 1
     local served
     served=$(echo "$metrics" | grep "^served_people " | awk '{print $2}' | cut -d. -f1)
     local up_gb
