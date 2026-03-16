@@ -3971,6 +3971,8 @@ cmd_donate_status() {
                 s_up=$(echo "$sm" | awk '{print $2}')
                 s_down=$(echo "$sm" | awk '{print $3}')
                 echo -e "    Served: ${CYAN}${s_served}${NC} people | Bandwidth: ${s_up} GB ↑ / ${s_down} GB ↓"
+            else
+                echo -e "    ${DIM}Stats unavailable — enable monitoring: moav start monitoring${NC}"
             fi
         else
             echo -e "    ${YELLOW}○${NC} Enabled but not running — start with: moav start snowflake"
@@ -4035,9 +4037,9 @@ cmd_donate() {
             echo "  help       Show this help"
             echo ""
             echo "Services:"
-            echo "  MahsaNet     mahsaserver.com — Donate VPN configs to Mahsa VPN (2M+ users)"
-            echo "  Conduit      psiphon.ca — Donate bandwidth to Psiphon (millions of users)"
-            echo "  Snowflake    torproject.org — Donate bandwidth to Tor network"
+            echo "  MahsaNet     mahsaserver.com — Donate VPN configs to MahsaNet VPN (2M+ users)"
+            echo "  Conduit      conduit.psiphon.ca — Donate bandwidth to Psiphon (millions of users)"
+            echo "  Snowflake    snowflake.torproject.org — Donate bandwidth to Tor network"
             echo ""
             echo "Configuration (.env):"
             echo "  MAHSANET_API_KEY              API token from mahsaserver.com/user/api"
