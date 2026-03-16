@@ -3713,18 +3713,17 @@ cmd_donate_mahsanet_donate() {
 _format_bytes_sh() {
     local bytes="${1:-0}"
     if [[ "$bytes" == "0" ]] || [[ -z "$bytes" ]]; then echo "0 B"; return; fi
-    local units=("B" "KB" "MB" "GB" "TB")
-    local i=0
-    local val="$bytes"
-    while [[ $(echo "$val >= 1024" | bc 2>/dev/null || echo 0) -eq 1 ]] && [[ $i -lt 4 ]]; do
-        val=$(echo "scale=2; $val / 1024" | bc 2>/dev/null || echo "$val")
-        i=$((i + 1))
-    done
-    echo "${val} ${units[$i]}"
+    # Use awk for portable float arithmetic
+    echo "$bytes" | awk '{
+        b=$1; units[0]="B"; units[1]="KB"; units[2]="MB"; units[3]="GB"; units[4]="TB"
+        for(i=0; i<4 && b>=1024; i++) b/=1024
+        printf "%.1f %s", b, units[i]
+    }'
 }
 
 _query_conduit_metrics() {
     local metrics
+    metrics=$(docker exec moav-conduit curl -sf http://localhost:9090/metrics 2>/dev/null) || \
     metrics=$(docker exec moav-conduit wget -qO- http://localhost:9090/metrics 2>/dev/null) || return 1
     local connected
     connected=$(echo "$metrics" | grep "^conduit_connected_clients " | awk '{print $2}' | cut -d. -f1)
@@ -3737,7 +3736,8 @@ _query_conduit_metrics() {
 
 _query_snowflake_metrics() {
     local metrics
-    metrics=$(docker exec moav-snowflake-exporter wget -qO- http://localhost:8080/metrics 2>/dev/null) || return 1
+    metrics=$(docker exec moav-snowflake-exporter wget -qO- http://localhost:8080/metrics 2>/dev/null) || \
+    metrics=$(docker exec moav-snowflake-exporter curl -sf http://localhost:8080/metrics 2>/dev/null) || return 1
     local served
     served=$(echo "$metrics" | grep "^served_people " | awk '{print $2}' | cut -d. -f1)
     local up_gb
@@ -3891,6 +3891,11 @@ cmd_donate_snowflake_setup() {
 }
 
 cmd_donate_conduit_info() {
+    echo ""
+    echo "  Psiphon Conduit generates a unique keypair when it first starts."
+    echo "  The Ryve deep link below lets you claim this Conduit in the Ryve app"
+    echo "  to monitor it and manage it from your phone."
+    echo ""
     if [[ -x "$SCRIPT_DIR/scripts/conduit-info.sh" ]]; then
         "$SCRIPT_DIR/scripts/conduit-info.sh"
     else
@@ -4049,18 +4054,32 @@ cmd_donate() {
             _show_donation_services
             echo ""
 
-            local api_key=""
-            [[ -f ".env" ]] && api_key=$(grep -E "^MAHSANET_API_KEY=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
-
-            if [[ -z "$api_key" ]]; then
-                echo -e "  Run ${CYAN}moav donate setup${NC} to configure donation services."
-                echo -e "  Run ${CYAN}moav donate status${NC} to see stats for running services."
-                return 0
-            fi
-
-            echo -e "  Donating to: ${GREEN}MahsaNet${NC} (mahsaserver.com)"
+            echo "  Actions:"
+            echo "    1. Donate VPN configs to MahsaNet"
+            echo "    2. View donation status & stats"
+            echo "    3. Configure donation services"
+            echo "    4. View Conduit Ryve link"
             echo ""
-            cmd_donate_mahsanet_donate "$api_key"
+            printf "  Select [1-4]: "
+            read -r donate_choice
+
+            case "$donate_choice" in
+                1)
+                    local api_key=""
+                    [[ -f ".env" ]] && api_key=$(grep -E "^MAHSANET_API_KEY=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
+                    if [[ -z "$api_key" ]]; then
+                        error "MahsaNet API key not configured"
+                        echo -e "  Run ${CYAN}moav donate setup${NC} to configure."
+                        return 1
+                    fi
+                    echo ""
+                    cmd_donate_mahsanet_donate "$api_key"
+                    ;;
+                2) echo ""; cmd_donate_status ;;
+                3) echo ""; cmd_donate setup ;;
+                4) cmd_donate_conduit_info ;;
+                *) info "Cancelled." ;;
+            esac
             ;;
     esac
 }
