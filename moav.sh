@@ -3710,21 +3710,298 @@ cmd_donate_mahsanet_donate() {
     echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
 }
 
+_format_bytes_sh() {
+    local bytes="${1:-0}"
+    if [[ "$bytes" == "0" ]] || [[ -z "$bytes" ]]; then echo "0 B"; return; fi
+    local units=("B" "KB" "MB" "GB" "TB")
+    local i=0
+    local val="$bytes"
+    while [[ $(echo "$val >= 1024" | bc 2>/dev/null || echo 0) -eq 1 ]] && [[ $i -lt 4 ]]; do
+        val=$(echo "scale=2; $val / 1024" | bc 2>/dev/null || echo "$val")
+        i=$((i + 1))
+    done
+    echo "${val} ${units[$i]}"
+}
+
+_query_conduit_metrics() {
+    local metrics
+    metrics=$(docker exec moav-conduit wget -qO- http://localhost:9090/metrics 2>/dev/null) || return 1
+    local connected
+    connected=$(echo "$metrics" | grep "^conduit_connected_clients " | awk '{print $2}' | cut -d. -f1)
+    local up_bytes
+    up_bytes=$(echo "$metrics" | grep "^conduit_bytes_uploaded " | awk '{print $2}' | cut -d. -f1)
+    local down_bytes
+    down_bytes=$(echo "$metrics" | grep "^conduit_bytes_downloaded " | awk '{print $2}' | cut -d. -f1)
+    echo "${connected:-0} ${up_bytes:-0} ${down_bytes:-0}"
+}
+
+_query_snowflake_metrics() {
+    local metrics
+    metrics=$(docker exec moav-snowflake-exporter wget -qO- http://localhost:8080/metrics 2>/dev/null) || return 1
+    local served
+    served=$(echo "$metrics" | grep "^served_people " | awk '{print $2}' | cut -d. -f1)
+    local up_gb
+    up_gb=$(echo "$metrics" | grep "^upload_gb " | awk '{print $2}')
+    local down_gb
+    down_gb=$(echo "$metrics" | grep "^download_gb " | awk '{print $2}')
+    echo "${served:-0} ${up_gb:-0} ${down_gb:-0}"
+}
+
+_show_donation_services() {
+    local env_file="$SCRIPT_DIR/.env"
+
+    # MahsaNet
+    local mahsa_key=""
+    [[ -f "$env_file" ]] && mahsa_key=$(get_env_val "MAHSANET_API_KEY" "$env_file" "")
+    if [[ -n "$mahsa_key" ]]; then
+        echo -e "    ${GREEN}✓${NC} MahsaNet    API key configured"
+    else
+        echo -e "    ${DIM}○${NC} MahsaNet    ${DIM}not configured${NC}"
+    fi
+
+    # Conduit
+    local conduit_enabled
+    conduit_enabled=$(get_env_val "ENABLE_CONDUIT" "$env_file" "true")
+    local conduit_bw
+    conduit_bw=$(get_env_val "CONDUIT_BANDWIDTH" "$env_file" "100")
+    local conduit_clients
+    conduit_clients=$(get_env_val "CONDUIT_MAX_COMMON_CLIENTS" "$env_file" "200")
+    if [[ "$conduit_enabled" == "true" ]]; then
+        local conduit_running=""
+        docker compose ps psiphon-conduit --status running 2>/dev/null | tail -n +2 | grep -q . && conduit_running="yes"
+        if [[ -n "$conduit_running" ]]; then
+            echo -e "    ${GREEN}✓${NC} Conduit     Running — ${conduit_bw} Mbps, ${conduit_clients} max clients"
+        else
+            echo -e "    ${YELLOW}○${NC} Conduit     Enabled but not running"
+        fi
+    else
+        echo -e "    ${DIM}○${NC} Conduit     ${DIM}disabled${NC}"
+    fi
+
+    # Snowflake
+    local snow_enabled
+    snow_enabled=$(get_env_val "ENABLE_SNOWFLAKE" "$env_file" "true")
+    local snow_bw
+    snow_bw=$(get_env_val "SNOWFLAKE_BANDWIDTH" "$env_file" "5")
+    local snow_cap
+    snow_cap=$(get_env_val "SNOWFLAKE_CAPACITY" "$env_file" "50")
+    if [[ "$snow_enabled" == "true" ]]; then
+        local snow_running=""
+        docker compose ps snowflake --status running 2>/dev/null | tail -n +2 | grep -q . && snow_running="yes"
+        if [[ -n "$snow_running" ]]; then
+            echo -e "    ${GREEN}✓${NC} Snowflake   Running — ${snow_bw} Mbps, ${snow_cap} capacity"
+        else
+            echo -e "    ${YELLOW}○${NC} Snowflake   Enabled but not running"
+        fi
+    else
+        echo -e "    ${DIM}○${NC} Snowflake   ${DIM}disabled${NC}"
+    fi
+}
+
+cmd_donate_conduit_setup() {
+    local env_file="$SCRIPT_DIR/.env"
+    print_section "Psiphon Conduit Configuration"
+    echo ""
+    echo "  Donate bandwidth to Psiphon's relay network (millions of users worldwide)."
+    echo ""
+
+    local current_bw
+    current_bw=$(get_env_val "CONDUIT_BANDWIDTH" "$env_file" "100")
+    local current_clients
+    current_clients=$(get_env_val "CONDUIT_MAX_COMMON_CLIENTS" "$env_file" "200")
+
+    echo -e "  Current: ${WHITE}${current_bw} Mbps${NC}, ${WHITE}${current_clients}${NC} max clients"
+    echo ""
+
+    printf "  Bandwidth limit in Mbps (current: $current_bw): "
+    read -r new_bw
+    new_bw="${new_bw:-$current_bw}"
+
+    printf "  Max concurrent clients (current: $current_clients): "
+    read -r new_clients
+    new_clients="${new_clients:-$current_clients}"
+
+    # Update .env
+    if grep -q "^CONDUIT_BANDWIDTH=" "$env_file" 2>/dev/null; then
+        sed -i "s/^CONDUIT_BANDWIDTH=.*/CONDUIT_BANDWIDTH=$new_bw/" "$env_file"
+    else
+        echo "CONDUIT_BANDWIDTH=$new_bw" >> "$env_file"
+    fi
+    if grep -q "^CONDUIT_MAX_COMMON_CLIENTS=" "$env_file" 2>/dev/null; then
+        sed -i "s/^CONDUIT_MAX_COMMON_CLIENTS=.*/CONDUIT_MAX_COMMON_CLIENTS=$new_clients/" "$env_file"
+    else
+        echo "CONDUIT_MAX_COMMON_CLIENTS=$new_clients" >> "$env_file"
+    fi
+
+    success "Updated: ${new_bw} Mbps, ${new_clients} max clients"
+
+    # Restart to apply
+    if confirm "Restart Conduit to apply changes?" "y"; then
+        docker compose up -d psiphon-conduit 2>/dev/null
+        success "Conduit restarted"
+    else
+        echo -e "  ${DIM}Run: docker compose up -d psiphon-conduit${NC}"
+    fi
+}
+
+cmd_donate_snowflake_setup() {
+    local env_file="$SCRIPT_DIR/.env"
+    print_section "Tor Snowflake Configuration"
+    echo ""
+    echo "  Donate bandwidth to the Tor network as a Snowflake proxy."
+    echo ""
+
+    local current_bw
+    current_bw=$(get_env_val "SNOWFLAKE_BANDWIDTH" "$env_file" "5")
+    local current_cap
+    current_cap=$(get_env_val "SNOWFLAKE_CAPACITY" "$env_file" "50")
+
+    echo -e "  Current: ${WHITE}${current_bw} Mbps${NC}, ${WHITE}${current_cap}${NC} capacity"
+    echo ""
+
+    printf "  Bandwidth limit in Mbps (current: $current_bw): "
+    read -r new_bw
+    new_bw="${new_bw:-$current_bw}"
+
+    printf "  Max concurrent clients (current: $current_cap): "
+    read -r new_cap
+    new_cap="${new_cap:-$current_cap}"
+
+    # Update .env
+    if grep -q "^SNOWFLAKE_BANDWIDTH=" "$env_file" 2>/dev/null; then
+        sed -i "s/^SNOWFLAKE_BANDWIDTH=.*/SNOWFLAKE_BANDWIDTH=$new_bw/" "$env_file"
+    else
+        echo "SNOWFLAKE_BANDWIDTH=$new_bw" >> "$env_file"
+    fi
+    if grep -q "^SNOWFLAKE_CAPACITY=" "$env_file" 2>/dev/null; then
+        sed -i "s/^SNOWFLAKE_CAPACITY=.*/SNOWFLAKE_CAPACITY=$new_cap/" "$env_file"
+    else
+        echo "SNOWFLAKE_CAPACITY=$new_cap" >> "$env_file"
+    fi
+
+    success "Updated: ${new_bw} Mbps, ${new_cap} capacity"
+
+    # Restart to apply
+    if confirm "Restart Snowflake to apply changes?" "y"; then
+        docker compose up -d snowflake 2>/dev/null
+        success "Snowflake restarted"
+    else
+        echo -e "  ${DIM}Run: docker compose up -d snowflake${NC}"
+    fi
+}
+
+cmd_donate_conduit_info() {
+    if [[ -x "$SCRIPT_DIR/scripts/conduit-info.sh" ]]; then
+        "$SCRIPT_DIR/scripts/conduit-info.sh"
+    else
+        error "conduit-info.sh not found"
+    fi
+}
+
+cmd_donate_status() {
+    local env_file="$SCRIPT_DIR/.env"
+    print_section "Donation Status"
+    echo ""
+
+    # MahsaNet
+    local mahsa_key=""
+    [[ -f "$env_file" ]] && mahsa_key=$(get_env_val "MAHSANET_API_KEY" "$env_file" "")
+    echo -e "  ${WHITE}MahsaNet${NC}"
+    if [[ -n "$mahsa_key" ]]; then
+        cmd_donate_mahsanet_status "$mahsa_key" 2>/dev/null || echo -e "    ${YELLOW}○${NC} Could not fetch stats"
+    else
+        echo -e "    ${DIM}○ Not configured — run: moav donate setup${NC}"
+    fi
+    echo ""
+
+    # Conduit
+    local conduit_enabled
+    conduit_enabled=$(get_env_val "ENABLE_CONDUIT" "$env_file" "true")
+    local conduit_bw
+    conduit_bw=$(get_env_val "CONDUIT_BANDWIDTH" "$env_file" "100")
+    local conduit_clients
+    conduit_clients=$(get_env_val "CONDUIT_MAX_COMMON_CLIENTS" "$env_file" "200")
+    echo -e "  ${WHITE}Psiphon Conduit${NC}"
+    if [[ "$conduit_enabled" == "true" ]]; then
+        local conduit_running=""
+        docker compose ps psiphon-conduit --status running 2>/dev/null | tail -n +2 | grep -q . && conduit_running="yes"
+        if [[ -n "$conduit_running" ]]; then
+            echo -e "    ${GREEN}✓${NC} Running — ${conduit_bw} Mbps, ${conduit_clients} max clients"
+            local cm
+            cm=$(_query_conduit_metrics 2>/dev/null)
+            if [[ -n "$cm" ]]; then
+                local c_conn c_up c_down
+                c_conn=$(echo "$cm" | awk '{print $1}')
+                c_up=$(echo "$cm" | awk '{print $2}')
+                c_down=$(echo "$cm" | awk '{print $3}')
+                echo -e "    Connected: ${CYAN}${c_conn}${NC} clients | Bandwidth: $(_format_bytes_sh "$c_up") ↑ / $(_format_bytes_sh "$c_down") ↓"
+            fi
+            echo -e "    ${DIM}Ryve link: moav donate info${NC}"
+        else
+            echo -e "    ${YELLOW}○${NC} Enabled but not running — start with: moav start conduit"
+        fi
+    else
+        echo -e "    ${DIM}○ Disabled — enable in .env: ENABLE_CONDUIT=true${NC}"
+    fi
+    echo ""
+
+    # Snowflake
+    local snow_enabled
+    snow_enabled=$(get_env_val "ENABLE_SNOWFLAKE" "$env_file" "true")
+    local snow_bw
+    snow_bw=$(get_env_val "SNOWFLAKE_BANDWIDTH" "$env_file" "5")
+    local snow_cap
+    snow_cap=$(get_env_val "SNOWFLAKE_CAPACITY" "$env_file" "50")
+    echo -e "  ${WHITE}Tor Snowflake${NC}"
+    if [[ "$snow_enabled" == "true" ]]; then
+        local snow_running=""
+        docker compose ps snowflake --status running 2>/dev/null | tail -n +2 | grep -q . && snow_running="yes"
+        if [[ -n "$snow_running" ]]; then
+            echo -e "    ${GREEN}✓${NC} Running — ${snow_bw} Mbps, ${snow_cap} capacity"
+            local sm
+            sm=$(_query_snowflake_metrics 2>/dev/null)
+            if [[ -n "$sm" ]]; then
+                local s_served s_up s_down
+                s_served=$(echo "$sm" | awk '{print $1}')
+                s_up=$(echo "$sm" | awk '{print $2}')
+                s_down=$(echo "$sm" | awk '{print $3}')
+                echo -e "    Served: ${CYAN}${s_served}${NC} people | Bandwidth: ${s_up} GB ↑ / ${s_down} GB ↓"
+            fi
+        else
+            echo -e "    ${YELLOW}○${NC} Enabled but not running — start with: moav start snowflake"
+        fi
+    else
+        echo -e "    ${DIM}○ Disabled — enable in .env: ENABLE_SNOWFLAKE=true${NC}"
+    fi
+}
+
 cmd_donate() {
     local action="${1:-}"
     shift 1 2>/dev/null || shift $#
 
     case "$action" in
         setup|--setup)
-            cmd_donate_mahsanet_setup
+            print_section "Donation Services Setup"
+            echo ""
+            echo "  1. MahsaNet     Configure API key for Mahsa VPN config donation"
+            echo "  2. Conduit      Configure Psiphon bandwidth donation"
+            echo "  3. Snowflake    Configure Tor bandwidth donation"
+            echo ""
+            printf "  Select service [1-3]: "
+            read -r svc_choice
+            case "$svc_choice" in
+                1) cmd_donate_mahsanet_setup ;;
+                2) cmd_donate_conduit_setup ;;
+                3) cmd_donate_snowflake_setup ;;
+                *) error "Invalid selection" ;;
+            esac
             ;;
         list|--list)
             local key; key=$(_get_donate_api_key) || return 1
             cmd_donate_mahsanet_list "$key"
             ;;
         status|--status)
-            local key; key=$(_get_donate_api_key) || return 1
-            cmd_donate_mahsanet_status "$key"
+            cmd_donate_status
             ;;
         delete|--delete)
             local key; key=$(_get_donate_api_key) || return 1
@@ -3734,59 +4011,55 @@ cmd_donate() {
             local key; key=$(_get_donate_api_key) || return 1
             cmd_donate_mahsanet_remove "$key"
             ;;
+        info|--info)
+            cmd_donate_conduit_info
+            ;;
         help|--help|-h)
             echo "Usage: moav donate [command]"
             echo ""
-            echo "Donate VPN configs to help people bypass censorship."
+            echo "Donate VPN configs and bandwidth to help people bypass censorship."
             echo ""
             echo "Commands:"
             echo "  (none)     Interactive donation wizard"
-            echo "  setup      Configure donation service API keys"
-            echo "  list       List donated configs"
-            echo "  status     Show donation statistics"
-            echo "  delete     Select and delete specific configs"
-            echo "  remove     Remove all donated configs"
+            echo "  setup      Configure donation services (MahsaNet, Conduit, Snowflake)"
+            echo "  status     Show all donation services status and stats"
+            echo "  list       List donated MahsaNet configs"
+            echo "  delete     Select and delete specific MahsaNet configs"
+            echo "  remove     Remove all donated MahsaNet configs"
+            echo "  info       Show Conduit Ryve deep link and QR code"
             echo "  help       Show this help"
             echo ""
             echo "Services:"
-            echo "  MahsaNet   mahsaserver.com — Mahsa VPN (2M+ users in Iran)"
+            echo "  MahsaNet     mahsaserver.com — Donate VPN configs to Mahsa VPN (2M+ users)"
+            echo "  Conduit      psiphon.ca — Donate bandwidth to Psiphon (millions of users)"
+            echo "  Snowflake    torproject.org — Donate bandwidth to Tor network"
             echo ""
             echo "Configuration (.env):"
-            echo "  MAHSANET_API_KEY         API token from mahsaserver.com/user/api"
-            echo "  MAHSANET_PROTOCOLS       Protocols to donate (default: reality hysteria2)"
-            echo "  MAHSANET_POOL            Pool name (default: mahsa)"
-            echo ""
-            echo "Examples:"
-            echo "  moav donate              Start donation wizard"
-            echo "  moav donate setup        Configure MahsaNet API key"
-            echo "  moav donate list         Show all donated configs"
-            echo "  moav donate delete       Remove specific configs"
+            echo "  MAHSANET_API_KEY              API token from mahsaserver.com/user/api"
+            echo "  CONDUIT_BANDWIDTH             Psiphon bandwidth limit in Mbps (default: 100)"
+            echo "  CONDUIT_MAX_COMMON_CLIENTS    Max concurrent Conduit clients (default: 200)"
+            echo "  SNOWFLAKE_BANDWIDTH           Tor bandwidth limit in Mbps (default: 5)"
+            echo "  SNOWFLAKE_CAPACITY            Max concurrent Snowflake clients (default: 50)"
             ;;
         *)
-            # Wizard flow: check configured services and donate
+            # Wizard flow
+            print_section "Donate VPN Configs & Bandwidth"
+            echo ""
+            echo "  Services:"
+            _show_donation_services
+            echo ""
+
             local api_key=""
-            if [[ -f ".env" ]]; then
-                api_key=$(grep -E "^MAHSANET_API_KEY=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
-            fi
+            [[ -f ".env" ]] && api_key=$(grep -E "^MAHSANET_API_KEY=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
 
             if [[ -z "$api_key" ]]; then
-                print_section "Donate VPN Configs"
-                echo ""
-                echo "  Donate VPN configs to help people bypass internet censorship."
-                echo ""
-                echo "  Available services:"
-                echo -e "    ${DIM}○${NC} MahsaNet (mahsaserver.com) — ${DIM}not configured${NC}"
-                echo ""
-                echo -e "  Run ${CYAN}moav donate setup${NC} to configure a donation service."
+                echo -e "  Run ${CYAN}moav donate setup${NC} to configure donation services."
+                echo -e "  Run ${CYAN}moav donate status${NC} to see stats for running services."
                 return 0
             fi
 
-            # Auto-select MahsaNet (only configured service)
-            print_section "Donate VPN Configs"
+            echo -e "  Donating to: ${GREEN}MahsaNet${NC} (mahsaserver.com)"
             echo ""
-            echo -e "  Service: ${GREEN}MahsaNet${NC} (mahsaserver.com — 2M+ users in Iran)"
-            echo ""
-
             cmd_donate_mahsanet_donate "$api_key"
             ;;
     esac
