@@ -1737,6 +1737,9 @@ cmd_setup_dns() {
 # =============================================================================
 
 DOCTOR_CHECKS=(
+    "docker:Check Docker and prerequisites"
+    "memory:Check available RAM"
+    "disk:Check available disk space"
     "dns:Check DNS records for enabled protocols"
     "services:Check running services vs enabled config"
     "config:Check config files and keys from bootstrap"
@@ -1756,6 +1759,147 @@ doctor_is_enabled() {
             return 1
             ;;
     esac
+}
+
+doctor_check_docker() {
+    local pass=true
+
+    # Docker daemon
+    if command -v docker &>/dev/null; then
+        local docker_ver
+        docker_ver=$(docker --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1)
+        if docker info &>/dev/null; then
+            echo -e "    ${GREEN}✓${NC} Docker ${docker_ver} — running"
+        else
+            echo -e "    ${RED}✗${NC} Docker ${docker_ver} — daemon not running"
+            echo -e "      ${DIM}Run: sudo systemctl start docker${NC}"
+            pass=false
+        fi
+    else
+        echo -e "    ${RED}✗${NC} Docker not installed"
+        echo -e "      ${DIM}Install: curl -fsSL https://get.docker.com | sh${NC}"
+        pass=false
+    fi
+
+    # Docker Compose
+    if docker compose version &>/dev/null; then
+        local compose_ver
+        compose_ver=$(docker compose version --short 2>/dev/null)
+        echo -e "    ${GREEN}✓${NC} Docker Compose ${compose_ver}"
+    else
+        echo -e "    ${RED}✗${NC} Docker Compose not found"
+        pass=false
+    fi
+
+    # Docker disk usage (brief)
+    local docker_usage
+    docker_usage=$(docker system df --format '{{.Type}}\t{{.Size}}' 2>/dev/null)
+    if [[ -n "$docker_usage" ]]; then
+        local images_size containers_size volumes_size
+        images_size=$(echo "$docker_usage" | grep "Images" | awk '{print $2}')
+        volumes_size=$(echo "$docker_usage" | grep "Volumes" | awk '{print $2}')
+        echo -e "    ${DIM}Docker disk: images=${images_size:-?}, volumes=${volumes_size:-?}${NC}"
+    fi
+
+    $pass && return 0 || return 1
+}
+
+doctor_check_memory() {
+    local env_file="$SCRIPT_DIR/.env"
+
+    # Get total and available memory in MB
+    local total_mb available_mb
+    total_mb=$(awk '/MemTotal/ {printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null)
+    available_mb=$(awk '/MemAvailable/ {printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null)
+
+    if [[ -z "$total_mb" ]]; then
+        echo -e "    ${YELLOW}○${NC} Could not read /proc/meminfo"
+        return 2
+    fi
+
+    local total_gb
+    total_gb=$(awk "BEGIN {printf \"%.1f\", $total_mb/1024}")
+    local avail_gb
+    avail_gb=$(awk "BEGIN {printf \"%.1f\", $available_mb/1024}")
+    local used_pct
+    used_pct=$(awk "BEGIN {printf \"%.0f\", ($total_mb-$available_mb)/$total_mb*100}")
+
+    echo -e "    RAM: ${WHITE}${total_gb} GB${NC} total, ${available_mb} MB available (${used_pct}% used)"
+
+    # Check monitoring enabled
+    local monitoring_enabled
+    monitoring_enabled=$(get_env_val "ENABLE_MONITORING" "$env_file" "false")
+
+    if [[ "$total_mb" -lt 1024 ]]; then
+        echo -e "    ${RED}✗${NC} Less than 1 GB RAM — MoaV may be unstable"
+        echo -e "      ${DIM}Upgrade to at least 1 GB (2 GB with monitoring)${NC}"
+        return 1
+    elif [[ "$total_mb" -lt 2048 ]] && [[ "$monitoring_enabled" == "true" ]]; then
+        echo -e "    ${YELLOW}○${NC} Less than 2 GB with monitoring enabled — may cause hangs"
+        echo -e "      ${DIM}Upgrade to 2 GB+ or disable monitoring: ENABLE_MONITORING=false${NC}"
+        return 1
+    elif [[ "$available_mb" -lt 256 ]]; then
+        echo -e "    ${RED}✗${NC} Very low available memory (${available_mb} MB)"
+        echo -e "      ${DIM}Check for memory leaks: docker stats --no-stream${NC}"
+        return 1
+    else
+        echo -e "    ${GREEN}✓${NC} Memory OK"
+        return 0
+    fi
+}
+
+doctor_check_disk() {
+    # Check root filesystem
+    local disk_info
+    disk_info=$(df -h / 2>/dev/null | tail -1)
+
+    if [[ -z "$disk_info" ]]; then
+        echo -e "    ${YELLOW}○${NC} Could not check disk space"
+        return 2
+    fi
+
+    local total used avail pct
+    total=$(echo "$disk_info" | awk '{print $2}')
+    used=$(echo "$disk_info" | awk '{print $3}')
+    avail=$(echo "$disk_info" | awk '{print $4}')
+    pct=$(echo "$disk_info" | awk '{print $5}' | tr -d '%')
+
+    echo -e "    Disk: ${WHITE}${total}${NC} total, ${avail} available (${pct}% used)"
+
+    # Check /var/lib/docker separately if on different partition
+    local docker_dir="/var/lib/docker"
+    if [[ -d "$docker_dir" ]]; then
+        local docker_disk
+        docker_disk=$(df -h "$docker_dir" 2>/dev/null | tail -1)
+        local docker_avail docker_pct
+        docker_avail=$(echo "$docker_disk" | awk '{print $4}')
+        docker_pct=$(echo "$docker_disk" | awk '{print $5}' | tr -d '%')
+        # Only show if different from root
+        local root_dev docker_dev
+        root_dev=$(df / 2>/dev/null | tail -1 | awk '{print $1}')
+        docker_dev=$(df "$docker_dir" 2>/dev/null | tail -1 | awk '{print $1}')
+        if [[ "$root_dev" != "$docker_dev" ]]; then
+            echo -e "    Docker: ${docker_avail} available (${docker_pct}% used)"
+        fi
+    fi
+
+    # Thresholds
+    local avail_mb
+    avail_mb=$(df -m / 2>/dev/null | tail -1 | awk '{print $4}')
+
+    if [[ "${avail_mb:-0}" -lt 1024 ]]; then
+        echo -e "    ${RED}✗${NC} Less than 1 GB free disk space"
+        echo -e "      ${DIM}Clean up: docker system prune -a --volumes${NC}"
+        echo -e "      ${DIM}Find large files: apt install ncdu && ncdu /${NC}"
+        return 1
+    elif [[ "${avail_mb:-0}" -lt 2048 ]]; then
+        echo -e "    ${YELLOW}○${NC} Less than 2 GB free — may run low with monitoring/logs"
+        echo -e "      ${DIM}Check usage: ncdu / or docker system df -v${NC}"
+        return 1
+    else
+        echo -e "    ${GREEN}✓${NC} Disk space OK"
+        return 0
+    fi
 }
 
 doctor_lookup_a_records() {

@@ -116,7 +116,7 @@ _moav() {
             COMPREPLY=($(compgen -W "-b --branch" -- "$cur"))
             ;;
         doctor)
-            COMPREPLY=($(compgen -W "dns services config ports env updates all --help -h help" -- "$cur"))
+            COMPREPLY=($(compgen -W "docker memory disk dns services config ports env updates all --help -h help" -- "$cur"))
             ;;
         uninstall)
             COMPREPLY=($(compgen -W "--wipe" -- "$cur"))
