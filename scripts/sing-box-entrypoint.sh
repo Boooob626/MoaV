@@ -54,4 +54,7 @@ sed -i 's|/certs/|/tmp/certs/|g' "$RUNTIME_CONFIG"
 
 # Run sing-box as non-root
 echo "[sing-box] Starting proxy server..."
-exec gosu moav sing-box run -c "$RUNTIME_CONFIG"
+exec setpriv --reuid=moav --regid=moav --init-groups \
+    --inh-caps=+net_admin,+net_bind_service \
+    --ambient-caps=+net_admin,+net_bind_service \
+    sing-box run -c "$RUNTIME_CONFIG"

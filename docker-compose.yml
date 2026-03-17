@@ -44,8 +44,21 @@ services:
       - moav_logs:/var/log/sing-box
     environment:
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 512m
+    cpus: 1.0
     healthcheck:
       test: ["CMD", "sing-box", "check", "-c", "/etc/sing-box/config.json"]
       interval: 30s
@@ -82,6 +95,15 @@ services:
       - WSTUNNEL_LISTEN=0.0.0.0:8080
       # Forward to wireguard container via Docker internal DNS
       - WSTUNNEL_RESTRICT=moav-wireguard:51820
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 128m
+    cpus: 0.5
     depends_on:
       - wireguard
     profiles:
@@ -103,13 +125,23 @@ services:
       - /lib/modules:/lib/modules:ro
     environment:
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
-    privileged: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+      - /run:rw,noexec,size=5m
+    mem_limit: 256m
+    cpus: 0.5
     profiles:
       - wireguard
       - all
@@ -135,6 +167,15 @@ services:
       - ENABLE_DNSTT=${ENABLE_DNSTT:-true}
       - ENABLE_SLIPSTREAM=${ENABLE_SLIPSTREAM:-false}
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     profiles:
       - dnstunnel
       - all
@@ -158,6 +199,15 @@ services:
       - DNSTT_DOMAIN=${DNSTT_SUBDOMAIN:-t}.${DOMAIN}
       - DNSTT_UPSTREAM=sing-box:1080
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 128m
+    cpus: 0.5
     profiles:
       - dnstunnel
       - all
@@ -181,6 +231,15 @@ services:
       - SLIPSTREAM_DOMAIN=${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}
       - SLIPSTREAM_UPSTREAM=sing-box:1080
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 128m
+    cpus: 0.5
     profiles:
       - dnstunnel
       - all
@@ -218,6 +277,17 @@ services:
           echo "Certificate already exists, skipping..."
         fi
       '
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+      - /var/log/letsencrypt:rw,size=5m
+      - /var/lib/letsencrypt:rw,size=5m
+    mem_limit: 128m
+    cpus: 0.5
     profiles:
       - proxy
       - wireguard
@@ -234,8 +304,6 @@ services:
     restart: unless-stopped
     networks:
       - moav_net
-    tmpfs:
-      - /usr/share/nginx/html
     volumes:
       - ./web:/template:ro
       - moav_webroot:/acme
@@ -245,6 +313,22 @@ services:
       - "80:80"
     expose:
       - "80"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /usr/share/nginx/html
+      - /var/cache/nginx:rw,size=50m
+      - /var/run:rw,size=5m
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 128m
+    cpus: 0.25
     profiles:
       - proxy
       - wireguard
@@ -273,11 +357,19 @@ services:
       - "${TELEMT_API_PORT:-9091}"
     volumes:
       - ./configs/telemt:/etc/telemt:ro
-    tmpfs:
-      - /app/tlsfront:rw,size=10m
     environment:
       - RUST_LOG=info
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /app/tlsfront:rw,size=10m
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 128m
+    cpus: 0.5
     profiles:
       - telegram
       - all
@@ -304,6 +396,15 @@ services:
       - CONDUIT_MAX_COMMON_CLIENTS=${CONDUIT_MAX_COMMON_CLIENTS:-100}
     expose:
       - "9090"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 256m
+    cpus: 0.5
     profiles:
       - conduit
       - all
@@ -327,8 +428,17 @@ services:
       - TZ=${TZ:-UTC}
       - SNOWFLAKE_BANDWIDTH=${SNOWFLAKE_BANDWIDTH:-50}
       - SNOWFLAKE_CAPACITY=${SNOWFLAKE_CAPACITY:-20}
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 256m
+    cpus: 0.5
     profiles:
       - snowflake
       - all
@@ -350,6 +460,15 @@ services:
       - TZ=${TZ:-UTC}
     expose:
       - "8080"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     # Note: No depends_on as snowflake may not be running; exporter handles retry
     profiles:
       - monitoring
@@ -376,15 +495,25 @@ services:
       - /lib/modules:/lib/modules:ro
     environment:
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+      - NET_RAW
     devices:
       - /dev/net/tun:/dev/net/tun
+    security_opt:
+      - no-new-privileges:true
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
-    privileged: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+      - /run:rw,noexec,size=5m
+    mem_limit: 256m
+    cpus: 0.5
     profiles:
       - amneziawg
       - all
@@ -415,8 +544,21 @@ services:
       - DOMAIN=${DOMAIN}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=50m
+    mem_limit: 256m
+    cpus: 0.5
     depends_on:
       certbot:
         condition: service_completed_successfully
@@ -445,6 +587,15 @@ services:
       - moav_state:/state:ro
     environment:
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 256m
+    cpus: 0.5
     profiles:
       - xhttp
       - all
@@ -466,6 +617,17 @@ services:
       - POST=1              # restart, exec create
       - EXEC=1              # docker compose exec
       - NETWORKS=1          # docker compose networking
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+      - /run:rw,size=5m
+      - /var/lib/haproxy:rw,size=5m
+    mem_limit: 128m
+    cpus: 0.25
     profiles:
       - admin
       - all
@@ -497,6 +659,19 @@ services:
       - MAHSANET_POOL=${MAHSANET_POOL:-mahsa}
       - DOCKER_HOST=tcp://docker-proxy:2375
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=50m
+    mem_limit: 256m
+    cpus: 0.5
     depends_on:
       - docker-proxy
     profiles:
@@ -525,6 +700,15 @@ services:
       - '--web.enable-lifecycle'
     environment:
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 512m
+    cpus: 0.5
     extra_hosts:
       - "host.docker.internal:host-gateway"
     profiles:
@@ -558,6 +742,11 @@ services:
       - GRAFANA_SUBDOMAIN=${GRAFANA_SUBDOMAIN:-}
       - GRAFANA_APP_TITLE=${GRAFANA_APP_TITLE:-}
       - TZ=${TZ:-UTC}
+    # Note: read_only not set - grafana entrypoint writes branding files to container filesystem
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 512m
+    cpus: 0.5
     depends_on:
       - prometheus
     profiles:
@@ -579,6 +768,18 @@ services:
     volumes:
       - ./scripts/grafana-proxy-entrypoint.sh:/scripts/grafana-proxy-entrypoint.sh:ro
       - moav_certs:/certs:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+      - /etc/nginx/conf.d:rw,size=1m
+      - /var/cache/nginx:rw,size=50m
+      - /var/run:rw,size=5m
+    mem_limit: 128m
+    cpus: 0.25
     depends_on:
       - grafana
     profiles:
@@ -604,6 +805,15 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     environment:
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     profiles:
       - monitoring
       - all
@@ -634,6 +844,8 @@ services:
       - '--store_container_labels=true'
     environment:
       - TZ=${TZ:-UTC}
+    mem_limit: 256m
+    cpus: 0.5
     profiles:
       - monitoring
       - all
@@ -652,6 +864,15 @@ services:
       - CLASH_TOKEN=${CLASH_API_SECRET:-}
       - TZ=${TZ:-UTC}
     command: ["-collectDest"]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     profiles:
       - monitoring
       - all
@@ -674,6 +895,15 @@ services:
       - TZ=${TZ:-UTC}
     expose:
       - "9102"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     # Note: No depends_on as sing-box may not be running; exporter handles retry
     profiles:
       - monitoring
@@ -693,6 +923,15 @@ services:
       - TZ=${TZ:-UTC}
     expose:
       - "9104"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     profiles:
       - monitoring
       - all
@@ -713,6 +952,15 @@ services:
       - TZ=${TZ:-UTC}
     expose:
       - "9103"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     profiles:
       - monitoring
       - all
@@ -732,6 +980,15 @@ services:
       - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     profiles:
       - monitoring
       - all
@@ -751,6 +1008,15 @@ services:
       - moav_geoip:/geoip:ro
     environment:
       - TZ=${TZ:-UTC}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 64m
+    cpus: 0.25
     profiles:
       - monitoring
       - all
@@ -771,6 +1037,15 @@ services:
         curl -fsSL "$$URL" | gunzip > /geoip/dbip-country-lite.mmdb &&
         echo "GeoIP database updated successfully ($${MONTH})"
       '
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 128m
+    cpus: 0.5
     profiles:
       - setup
 
@@ -826,6 +1101,15 @@ services:
       - CDN_TRANSPORT=${CDN_TRANSPORT:-httpupgrade}
       - CDN_SNI=${CDN_SNI:-}
       - CDN_ADDRESS=${CDN_ADDRESS:-}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+    mem_limit: 256m
+    cpus: 1.0
     profiles:
       - setup
 
@@ -852,8 +1136,18 @@ services:
     ports:
       - "${CLIENT_SOCKS_PORT:-1080}:1080"
       - "${CLIENT_HTTP_PORT:-8080}:8080"
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,size=10m
+      - /run:rw,noexec,size=5m
+    mem_limit: 256m
+    cpus: 0.5
     devices:
       - /dev/net/tun:/dev/net/tun
     profiles:

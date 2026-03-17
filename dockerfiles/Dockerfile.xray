@@ -18,11 +18,14 @@ RUN apk add --no-cache bash ca-certificates tzdata unzip curl \
     && chmod +x /usr/local/bin/xray \
     && rm /tmp/xray.zip
 
-RUN mkdir -p /etc/xray /state
+RUN addgroup -S moav && adduser -S moav -G moav
+
+RUN mkdir -p /etc/xray /state && chown -R moav:moav /etc/xray /state
 
 COPY scripts/xray-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 2096/tcp
 
+USER moav
 ENTRYPOINT ["/entrypoint.sh"]
