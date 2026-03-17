@@ -1738,6 +1738,11 @@ cmd_setup_dns() {
 
 DOCTOR_CHECKS=(
     "dns:Check DNS records for enabled protocols"
+    "services:Check running services vs enabled config"
+    "config:Check config files and keys from bootstrap"
+    "ports:Check required ports are available"
+    "env:Compare .env with .env.example for missing vars"
+    "updates:Check for MoaV updates"
 )
 
 doctor_is_enabled() {
@@ -2047,6 +2052,246 @@ doctor_check_dns() {
     fi
 
     return 0
+}
+
+doctor_check_services() {
+    local env_file="$SCRIPT_DIR/.env"
+    local pass=true
+
+    # Map of ENABLE_* vars to service names
+    local -A service_map=(
+        ["ENABLE_REALITY"]="sing-box"
+        ["ENABLE_XHTTP"]="xray"
+        ["ENABLE_WIREGUARD"]="wireguard"
+        ["ENABLE_AMNEZIAWG"]="amneziawg"
+        ["ENABLE_TELEMT"]="telemt"
+        ["ENABLE_DNSTT"]="dnstt"
+        ["ENABLE_SLIPSTREAM"]="slipstream"
+        ["ENABLE_TRUSTTUNNEL"]="trusttunnel"
+        ["ENABLE_CONDUIT"]="psiphon-conduit"
+        ["ENABLE_SNOWFLAKE"]="snowflake"
+    )
+
+    local running_services
+    running_services=$(docker compose ps --services --filter "status=running" 2>/dev/null || echo "")
+    local restarting_services
+    restarting_services=$(docker compose ps --services --filter "status=restarting" 2>/dev/null || echo "")
+
+    for enable_var in "${!service_map[@]}"; do
+        local svc="${service_map[$enable_var]}"
+        local enabled
+        enabled=$(get_env_val "$enable_var" "$env_file" "true")
+
+        if [[ "$enabled" == "true" ]]; then
+            if echo "$restarting_services" | grep -qw "$svc"; then
+                echo -e "    ${RED}✗${NC} $svc — enabled but crash-looping (restarting)"
+                echo -e "      ${DIM}Check logs: moav logs $svc${NC}"
+                pass=false
+            elif echo "$running_services" | grep -qw "$svc"; then
+                echo -e "    ${GREEN}✓${NC} $svc — running"
+            else
+                echo -e "    ${YELLOW}○${NC} $svc — enabled but not running"
+                echo -e "      ${DIM}Start with: moav start${NC}"
+                pass=false
+            fi
+        fi
+    done
+
+    $pass && return 0 || return 1
+}
+
+doctor_check_config() {
+    local pass=true
+    local env_file="$SCRIPT_DIR/.env"
+
+    # Check bootstrap has been run
+    local bootstrapped=false
+    docker run --rm -v moav_moav_state:/state alpine test -f /state/.bootstrapped 2>/dev/null && bootstrapped=true
+
+    if [[ "$bootstrapped" != "true" ]]; then
+        echo -e "    ${RED}✗${NC} Bootstrap has not been run"
+        echo -e "      ${DIM}Run: moav bootstrap${NC}"
+        return 1
+    fi
+    echo -e "    ${GREEN}✓${NC} Bootstrap completed"
+
+    # Check config files for enabled services
+    local -A config_files=(
+        ["ENABLE_REALITY"]="configs/sing-box/config.json"
+        ["ENABLE_XHTTP"]="configs/xray/config.json"
+        ["ENABLE_WIREGUARD"]="configs/wireguard/wg0.conf"
+        ["ENABLE_AMNEZIAWG"]="configs/amneziawg/awg0.conf"
+        ["ENABLE_TELEMT"]="configs/telemt/config.toml"
+    )
+
+    for enable_var in "${!config_files[@]}"; do
+        local enabled
+        enabled=$(get_env_val "$enable_var" "$env_file" "true")
+        local config="${config_files[$enable_var]}"
+        local svc_name="${config%%/*}"
+        svc_name="${svc_name#configs/}"
+
+        if [[ "$enabled" == "true" ]]; then
+            if [[ -f "$SCRIPT_DIR/$config" ]]; then
+                echo -e "    ${GREEN}✓${NC} $config exists"
+            else
+                echo -e "    ${RED}✗${NC} $config missing"
+                echo -e "      ${DIM}Run: moav bootstrap${NC}"
+                pass=false
+            fi
+        fi
+    done
+
+    # Check state keys
+    local keys_exist=false
+    docker run --rm -v moav_moav_state:/state alpine test -d /state/keys 2>/dev/null && keys_exist=true
+    if [[ "$keys_exist" == "true" ]]; then
+        echo -e "    ${GREEN}✓${NC} State keys directory exists"
+    else
+        echo -e "    ${RED}✗${NC} State keys missing"
+        echo -e "      ${DIM}Run: moav bootstrap${NC}"
+        pass=false
+    fi
+
+    $pass && return 0 || return 1
+}
+
+doctor_check_ports() {
+    local env_file="$SCRIPT_DIR/.env"
+    local pass=true
+
+    # Service -> port mappings
+    local -A port_map=(
+        ["sing-box"]="$(get_env_val 'PORT_REALITY' "$env_file" '443')"
+        ["xray"]="$(get_env_val 'PORT_XHTTP' "$env_file" '2096')"
+        ["wireguard"]="$(get_env_val 'PORT_WIREGUARD' "$env_file" '51820')"
+        ["amneziawg"]="$(get_env_val 'PORT_AMNEZIAWG' "$env_file" '51821')"
+        ["telemt"]="$(get_env_val 'PORT_TELEMT' "$env_file" '993')"
+        ["trusttunnel"]="$(get_env_val 'PORT_TRUSTTUNNEL' "$env_file" '4443')"
+        ["admin"]="$(get_env_val 'PORT_ADMIN' "$env_file" '9443')"
+        ["grafana"]="$(get_env_val 'PORT_GRAFANA' "$env_file" '9444')"
+    )
+
+    # Check for systemd-resolved on port 53 (if dnstt enabled)
+    local dnstt_enabled
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+    local slip_enabled
+    slip_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
+
+    if [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
+        if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
+            if systemctl is-active systemd-resolved &>/dev/null; then
+                echo -e "    ${RED}✗${NC} Port 53 in use by systemd-resolved (DNS tunnels need it)"
+                echo -e "      ${DIM}Run: moav setup-dns${NC}"
+                pass=false
+            else
+                echo -e "    ${YELLOW}○${NC} Port 53 in use (DNS tunnels may conflict)"
+            fi
+        else
+            echo -e "    ${GREEN}✓${NC} Port 53 available for DNS tunnels"
+        fi
+    fi
+
+    # Check key service ports
+    for svc in "${!port_map[@]}"; do
+        local port="${port_map[$svc]}"
+        if ss -tlnp 2>/dev/null | grep -q ":${port} " || ss -ulnp 2>/dev/null | grep -q ":${port} "; then
+            echo -e "    ${GREEN}✓${NC} Port $port ($svc) — listening"
+        else
+            echo -e "    ${DIM}○${NC} Port $port ($svc) — not listening"
+        fi
+    done
+
+    $pass && return 0 || return 1
+}
+
+doctor_check_env() {
+    local env_file="$SCRIPT_DIR/.env"
+    local example_file="$SCRIPT_DIR/.env.example"
+    local pass=true
+
+    if [[ ! -f "$env_file" ]]; then
+        echo -e "    ${RED}✗${NC} .env file not found"
+        echo -e "      ${DIM}Run: cp .env.example .env${NC}"
+        return 1
+    fi
+
+    if [[ ! -f "$example_file" ]]; then
+        echo -e "    ${YELLOW}○${NC} .env.example not found — skipping comparison"
+        return 2
+    fi
+
+    # Extract variable names from .env.example (skip comments and empty lines)
+    local missing=0
+    local total=0
+    local critical_missing=()
+
+    # Critical variables that should always be set
+    local critical_vars=("ADMIN_PASSWORD" "DOMAIN" "SERVER_IP")
+
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$line" ]] && continue
+        [[ ! "$line" =~ = ]] && continue
+
+        local var_name="${line%%=*}"
+        var_name=$(echo "$var_name" | xargs)  # trim whitespace
+        [[ -z "$var_name" ]] && continue
+
+        total=$((total + 1))
+
+        if ! grep -q "^${var_name}=" "$env_file" 2>/dev/null; then
+            missing=$((missing + 1))
+            # Check if critical
+            for cv in "${critical_vars[@]}"; do
+                if [[ "$var_name" == "$cv" ]]; then
+                    critical_missing+=("$var_name")
+                fi
+            done
+        fi
+    done < "$example_file"
+
+    if [[ ${#critical_missing[@]} -gt 0 ]]; then
+        for cv in "${critical_missing[@]}"; do
+            echo -e "    ${RED}✗${NC} Missing critical variable: $cv"
+        done
+        pass=false
+    fi
+
+    if [[ $missing -gt 0 ]]; then
+        echo -e "    ${YELLOW}○${NC} $missing of $total variables from .env.example not in .env"
+        echo -e "      ${DIM}New variables use defaults. Review with: diff <(grep -o '^[A-Z_]*=' .env.example | sort) <(grep -o '^[A-Z_]*=' .env | sort)${NC}"
+    else
+        echo -e "    ${GREEN}✓${NC} All $total variables from .env.example present in .env"
+    fi
+
+    $pass && return 0 || return 1
+}
+
+doctor_check_updates() {
+    local current_version
+    current_version=$(cat "$SCRIPT_DIR/VERSION" 2>/dev/null || echo "unknown")
+
+    echo -e "    Current version: ${WHITE}v${current_version}${NC}"
+
+    # Check latest version from GitHub
+    local latest
+    latest=$(curl -sf --max-time 5 "https://api.github.com/repos/shayanb/MoaV/releases/latest" 2>/dev/null | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4 | sed 's/^v//')
+
+    if [[ -z "$latest" ]]; then
+        echo -e "    ${YELLOW}○${NC} Could not check for updates (no internet or GitHub unreachable)"
+        return 2
+    fi
+
+    if [[ "$current_version" == "$latest" ]]; then
+        echo -e "    ${GREEN}✓${NC} Up to date (v${latest})"
+        return 0
+    else
+        echo -e "    ${YELLOW}○${NC} Update available: v${latest} (current: v${current_version})"
+        echo -e "      ${DIM}Run: moav update${NC}"
+        return 1
+    fi
 }
 
 cmd_doctor() {
