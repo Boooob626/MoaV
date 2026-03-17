@@ -1940,18 +1940,20 @@ doctor_lookup_ns_records() {
     local parent_zone="${host#*.}"
 
     if command -v dig >/dev/null 2>&1; then
-        # First try: query authoritative NS of parent zone for the subdomain NS
+        # First try: query authoritative NS of parent zone
+        # Subdomain NS delegation appears in AUTHORITY section, not ANSWER
         local auth_ns
-        auth_ns=$(dig +short NS "$parent_zone" 2>/dev/null | head -1 | sed 's/\.$//')
+        auth_ns=$(dig +short NS "$parent_zone" 2>/dev/null | head -1)
         if [[ -n "$auth_ns" ]]; then
             local result
-            result=$(dig +short NS "$host" "@${auth_ns}" 2>/dev/null | sed 's/\.$//' | sed '/^$/d' | sort -u)
+            # Parse AUTHORITY section for NS records
+            result=$(dig NS "$host" "@${auth_ns}" 2>/dev/null | awk '/^;; AUTHORITY SECTION:/,/^$/ { if ($4 == "NS") print $5 }' | sed 's/\.$//' | sed '/^$/d' | sort -u)
             if [[ -n "$result" ]]; then
                 echo "$result"
                 return 0
             fi
         fi
-        # Fallback: query public resolver
+        # Fallback: try +short (works for zones where NS is in ANSWER section)
         dig +short NS "$host" 2>/dev/null | sed 's/\.$//' | sed '/^$/d' | sort -u
         return 0
     fi
