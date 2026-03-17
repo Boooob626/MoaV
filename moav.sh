@@ -1936,8 +1936,22 @@ doctor_lookup_a_records() {
 
 doctor_lookup_ns_records() {
     local host="$1"
+    # Extract parent zone (e.g., t.bitchat.center -> bitchat.center)
+    local parent_zone="${host#*.}"
 
     if command -v dig >/dev/null 2>&1; then
+        # First try: query authoritative NS of parent zone for the subdomain NS
+        local auth_ns
+        auth_ns=$(dig +short NS "$parent_zone" 2>/dev/null | head -1 | sed 's/\.$//')
+        if [[ -n "$auth_ns" ]]; then
+            local result
+            result=$(dig +short NS "$host" "@${auth_ns}" 2>/dev/null | sed 's/\.$//' | sed '/^$/d' | sort -u)
+            if [[ -n "$result" ]]; then
+                echo "$result"
+                return 0
+            fi
+        fi
+        # Fallback: query public resolver
         dig +short NS "$host" 2>/dev/null | sed 's/\.$//' | sed '/^$/d' | sort -u
         return 0
     fi
