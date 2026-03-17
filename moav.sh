@@ -3691,6 +3691,26 @@ cmd_donate_mahsanet_donate() {
                 mahsanet_save_donation "$config_id" "$username" "$protocol"
                 donated=$((donated + 1))
                 echo -e "  ${GREEN}✓${NC} $username/$protocol → donated (id: $config_id)"
+            elif [[ "$http_code" == "429" ]]; then
+                # Rate limited — extract wait time and retry
+                local wait_secs
+                wait_secs=$(echo "$body" | grep -oP 'in \K[0-9]+' 2>/dev/null || echo "30")
+                echo -e "  ${YELLOW}⏳${NC} Rate limited — waiting ${wait_secs}s..."
+                sleep "$((wait_secs + 2))"
+                # Retry
+                response=$(mahsanet_api_call "POST" "" "$json_data" "$api_key")
+                http_code=$(echo "$response" | tail -1)
+                body=$(echo "$response" | sed '$d')
+                if [[ "$http_code" == "201" ]]; then
+                    local config_id
+                    config_id=$(echo "$body" | jq -r '.hash // .id // "unknown"')
+                    mahsanet_save_donation "$config_id" "$username" "$protocol"
+                    donated=$((donated + 1))
+                    echo -e "  ${GREEN}✓${NC} $username/$protocol → donated (id: $config_id)"
+                else
+                    failed=$((failed + 1))
+                    echo -e "  ${RED}✗${NC} $username/$protocol → failed after retry ($http_code)"
+                fi
             else
                 failed=$((failed + 1))
                 local err_msg
