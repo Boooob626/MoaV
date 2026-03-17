@@ -10,11 +10,11 @@ echo "[grafana] Starting MoaV Grafana Dashboard"
 if [ -n "$GRAFANA_APP_TITLE" ]; then
     APP_TITLE="$GRAFANA_APP_TITLE"
 elif [ -n "$DOMAIN" ]; then
-    APP_TITLE="MoaV - ${DOMAIN}"
+    APP_TITLE="MoaV Grafana - ${DOMAIN}"
 elif [ -n "$SERVER_IP" ]; then
-    APP_TITLE="MoaV - ${SERVER_IP}"
+    APP_TITLE="MoaV Grafana - ${SERVER_IP}"
 else
-    APP_TITLE="MoaV"
+    APP_TITLE="MoaV Grafana"
 fi
 echo "[grafana] App title: $APP_TITLE"
 
@@ -34,10 +34,14 @@ GRAFANA_BUILD="/usr/share/grafana/public/build"
 if [ -d "/branding" ]; then
     echo "[grafana] Installing MoaV branding..."
 
-    # Replace favicon (browser tab icon)
+    # Replace favicon (browser tab icon) — Grafana has copies in both img/ and build/img/
     if [ -f "/branding/favicon.png" ]; then
-        cp /branding/favicon.png "$GRAFANA_IMG/fav32.png" && echo "[grafana] Replaced fav32.png"
-        cp /branding/favicon.png "$GRAFANA_IMG/apple-touch-icon.png" && echo "[grafana] Replaced apple-touch-icon.png"
+        cp /branding/favicon.png "$GRAFANA_IMG/fav32.png" 2>/dev/null && echo "[grafana] Replaced img/fav32.png"
+        cp /branding/favicon.png "$GRAFANA_BUILD/img/fav32.png" 2>/dev/null && echo "[grafana] Replaced build/img/fav32.png"
+        cp /branding/favicon.png "$GRAFANA_IMG/apple-touch-icon.png" 2>/dev/null && echo "[grafana] Replaced apple-touch-icon.png"
+    fi
+    if [ -f "/branding/favicon.ico" ]; then
+        cp /branding/favicon.ico "$GRAFANA_IMG/favicon.ico" 2>/dev/null && echo "[grafana] Replaced favicon.ico"
     fi
 
     # Replace login page logo (Grafana uses grafana_icon.svg)
@@ -54,23 +58,32 @@ SVGEOF
     fi
 
     # Replace app title in JavaScript bundles (affects browser tab and PWA name)
-    # This searches for the default "Grafana" title and replaces it
     if [ -d "$GRAFANA_BUILD" ]; then
         echo "[grafana] Patching app title to: $APP_TITLE"
-        # Find and replace AppTitle in JS bundles
+        patched=0
         for js_file in "$GRAFANA_BUILD"/*.js; do
-            if [ -f "$js_file" ]; then
-                # Replace various patterns where Grafana title appears
-                if grep -q '"AppTitle","Grafana"' "$js_file" 2>/dev/null; then
-                    sed -i "s/\"AppTitle\",\"Grafana\"/\"AppTitle\",\"$APP_TITLE\"/g" "$js_file"
-                    echo "[grafana] Patched AppTitle in $(basename "$js_file")"
-                fi
-                # Also try other common patterns
-                if grep -q 'title:"Grafana"' "$js_file" 2>/dev/null; then
-                    sed -i "s/title:\"Grafana\"/title:\"$APP_TITLE\"/g" "$js_file"
-                fi
+            [ -f "$js_file" ] || continue
+            if grep -q 'AppTitle' "$js_file" 2>/dev/null; then
+                # Try multiple patterns (varies by Grafana version)
+                sed -i "s/\"AppTitle\",\"Grafana\"/\"AppTitle\",\"$APP_TITLE\"/g" "$js_file" 2>/dev/null
+                sed -i "s/AppTitle:\"Grafana\"/AppTitle:\"$APP_TITLE\"/g" "$js_file" 2>/dev/null
+                sed -i "s/AppTitle=\"Grafana\"/AppTitle=\"$APP_TITLE\"/g" "$js_file" 2>/dev/null
+                echo "[grafana] Patched AppTitle in $(basename "$js_file")"
+                patched=1
+            fi
+            # Also patch generic title references
+            if grep -q 'title:"Grafana"' "$js_file" 2>/dev/null; then
+                sed -i "s/title:\"Grafana\"/title:\"$APP_TITLE\"/g" "$js_file" 2>/dev/null
             fi
         done
+        [ "$patched" -eq 0 ] && echo "[grafana] WARNING: AppTitle pattern not found in JS bundles"
+    fi
+
+    # Also patch the HTML title tag directly
+    GRAFANA_INDEX="/usr/share/grafana/public/views/index.html"
+    if [ -f "$GRAFANA_INDEX" ]; then
+        sed -i "s/<title>Grafana<\/title>/<title>$APP_TITLE<\/title>/g" "$GRAFANA_INDEX" 2>/dev/null && \
+            echo "[grafana] Patched index.html title"
     fi
 
     echo "[grafana] MoaV branding installed"

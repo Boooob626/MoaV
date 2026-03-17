@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-03-17
+
+### Added
+- **`moav donate` unified donation hub** — Shows all 3 services (MahsaNet, Conduit, Snowflake) with live stats, interactive wizard with action menu, setup for all services
+- **`moav donate status`** — Live stats for all donation services: MahsaNet config counts, Conduit connected clients and bandwidth, Snowflake people served and bandwidth relayed
+- **`moav donate setup`** — Configure Conduit bandwidth/max clients and Snowflake bandwidth/capacity from CLI, with automatic container restart
+- **`moav donate info`** — Show Psiphon Conduit Ryve deep link and QR code with usage instructions
+- **Telemt anti-DPI tuning documentation** — Collapsible reference in protocols.md with all 17 settings grouped by purpose
+- **Grafana browser tab differentiation** — Title changed to "MoaV Grafana" to distinguish from admin dashboard tab; favicon copied to both `img/` and `build/img/` paths; HTML `<title>` tag patched as reliable fallback
+
+### Fixed
+- **MahsaNet 429 rate limiting** — Donate flow now detects HTTP 429 throttling, waits the specified cooldown, and retries automatically (no more lost configs during bulk donation)
+- **Snowflake stats query** — Fixed `localhost` → `127.0.0.1` for Alpine BusyBox wget IPv6 resolution issue
+- **Conduit stats query** — Use `curl` first (conduit has curl, not wget)
+- **`_format_bytes_sh`** — Replaced `bc` dependency with portable `awk` arithmetic
+
+### Changed
+- **telemt** updated to [3.3.20](https://github.com/telemt/telemt/releases/tag/3.3.20) — draining writers threshold, max_connections limit, per-user IP limit inheritance, data path option
+
 ## [1.6.1] - 2026-03-15
 
 ### Fixed
@@ -809,7 +828,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uTLS fingerprint spoofing (Chrome)
 - Automatic short ID generation for Reality
 
-[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/shayanb/MoaV/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/shayanb/MoaV/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/shayanb/MoaV/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/shayanb/MoaV/compare/v1.4.7...v1.5.1
