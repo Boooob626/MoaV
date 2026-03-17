@@ -4,7 +4,7 @@
 
 English | **[فارسی](README-fa.md)** 
 
-Multi-protocol censorship circumvention stack optimized for hostile network environments.
+Multi-protocol Internet censorship circumvention stack optimized for hostile network environments.
 
 ## Features
 
