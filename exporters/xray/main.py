@@ -21,6 +21,8 @@ user_last_seen = {}  # user -> timestamp
 active_users = set()  # users seen in last 5 minutes
 user_upload = defaultdict(int)  # user -> upload bytes (cumulative)
 user_download = defaultdict(int)  # user -> download bytes (cumulative)
+inbound_upload = defaultdict(int)  # inbound_tag -> upload bytes (cumulative)
+inbound_download = defaultdict(int)  # inbound_tag -> download bytes (cumulative)
 country_connections = defaultdict(int)  # country -> total connections
 user_country = {}  # user -> last seen country code
 
@@ -97,8 +99,33 @@ def update_active_users():
         }
 
 
+def _run_statsquery(pattern):
+    """Run xray api statsquery with given pattern. Returns output string or None."""
+    try:
+        result = subprocess.run(
+            ['docker', 'exec', 'moav-xray', 'xray', 'api', 'statsquery',
+             '-s', '127.0.0.1:10085', '-pattern', pattern],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode != 0:
+            result = subprocess.run(
+                ['docker', 'exec', 'moav-xray', '/usr/local/bin/xray', 'api', 'statsquery',
+                 '-s', '127.0.0.1:10085', '-pattern', pattern],
+                capture_output=True, text=True, timeout=10
+            )
+        if result.returncode != 0:
+            return None
+        output = result.stdout.strip()
+        if not output:
+            output = result.stderr.strip()
+        return output if output else None
+    except Exception:
+        return None
+
+
 def query_xray_stats():
-    """Query Xray Stats API for per-user cumulative traffic data."""
+    """Query Xray Stats API for per-user and per-inbound traffic data."""
+    # User stats
     try:
         result = subprocess.run(
             ['docker', 'exec', 'moav-xray', 'xray', 'api', 'statsquery',
@@ -139,6 +166,11 @@ def query_xray_stats():
     except Exception as e:
         print(f"Stats API error: {e}")
 
+    # Inbound stats (separate query)
+    inbound_output = _run_statsquery("inbound")
+    if inbound_output:
+        parse_inbound_stats(inbound_output)
+
 
 def parse_stats_output(output: str):
     """Parse JSON stats output from xray api statsquery (cumulative values)."""
@@ -175,6 +207,32 @@ def parse_stats_output(output: str):
         total_down = sum(user_download.values())
         print(f"Stats query #{stats_query_count}: parsed {parsed_count} entries, "
               f"users with traffic: {len(user_upload)}, total: {total_up + total_down} bytes")
+
+
+def parse_inbound_stats(output: str):
+    """Parse inbound-level stats (traffic per inbound tag)."""
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        return
+
+    for entry in data.get("stat", []):
+        name = entry.get("name", "")
+        value = entry.get("value", 0)
+
+        # Format: inbound>>>tag>>>traffic>>>uplink/downlink
+        parts = name.split(">>>")
+        if len(parts) == 4 and parts[0] == "inbound" and parts[2] == "traffic":
+            tag = parts[1]
+            direction = parts[3]
+            # Skip api-in
+            if tag == "api-in":
+                continue
+            with metrics_lock:
+                if direction == "uplink":
+                    inbound_upload[tag] = value
+                elif direction == "downlink":
+                    inbound_download[tag] = value
 
 
 def tail_docker_logs():
@@ -274,6 +332,17 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 output.append('# HELP xray_download_bytes_total Total download bytes across all users')
                 output.append('# TYPE xray_download_bytes_total counter')
                 output.append(f'xray_download_bytes_total {total_down}')
+
+                # Per-inbound traffic
+                output.append('# HELP xray_inbound_upload_bytes Upload bytes per inbound')
+                output.append('# TYPE xray_inbound_upload_bytes counter')
+                for tag, bytes_val in sorted(inbound_upload.items()):
+                    output.append(f'xray_inbound_upload_bytes{{inbound="{tag}"}} {bytes_val}')
+
+                output.append('# HELP xray_inbound_download_bytes Download bytes per inbound')
+                output.append('# TYPE xray_inbound_download_bytes counter')
+                for tag, bytes_val in sorted(inbound_download.items()):
+                    output.append(f'xray_inbound_download_bytes{{inbound="{tag}"}} {bytes_val}')
 
                 # Connections by country
                 output.append('# HELP xray_connections_by_country Total connections by source country')
