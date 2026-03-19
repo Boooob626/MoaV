@@ -438,9 +438,10 @@ if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
     log_info "Generating XDNS client config for $USERNAME..."
 
     # Full Xray config (for apps that support custom JSON import)
+    # Config via DNS resolver (stealthier but may drop after a few minutes)
     cat > "$OUTPUT_DIR/xdns-config.json" <<XDNSEOF
 {
-  "remarks": "MoaV-XDNS-${USERNAME}",
+  "remarks": "MoaV-XDNS-${USERNAME} (via DNS)",
   "log": {"loglevel": "warning"},
   "inbounds": [
     {
@@ -494,6 +495,63 @@ if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
 }
 XDNSEOF
 
+    # Config via direct connection (more stable but less stealthy)
+    cat > "$OUTPUT_DIR/xdns-direct-config.json" <<XDNSEOF2
+{
+  "remarks": "MoaV-XDNS-${USERNAME} (direct)",
+  "log": {"loglevel": "warning"},
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 7891,
+      "protocol": "socks",
+      "settings": {"auth": "noauth", "udp": true}
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "${SERVER_IP}",
+            "port": ${PORT_XDNS:-53},
+            "users": [{"id": "${USER_UUID}", "encryption": "none"}]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "kcp",
+        "kcpSettings": {
+          "mtu": ${_xdns_mtu},
+          "tti": 100,
+          "uplinkCapacity": 0,
+          "downlinkCapacity": 0,
+          "congestion": true
+        },
+        "finalmask": {
+          "udp": [{"type": "xdns", "settings": {"domain": "${_xdns_domain}"}}]
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["::/0"],
+        "outboundTag": "direct"
+      }
+    ]
+  }
+}
+XDNSEOF2
+
     cat > "$OUTPUT_DIR/xdns.txt" <<EOF
 XDNS (DNS Tunnel via Xray mKCP) Configuration for $USERNAME
 ============================================================
@@ -514,14 +572,20 @@ Recommended clients:
 - Happ (Android) — beta, supports FinalMask
 - Xray CLI (any platform) — run: xray run -c xdns-config.json
 
-Setup with xdns-config.json:
-1. Import xdns-config.json into an Xray-compatible app with FinalMask support
-2. Default: connects via 8.8.8.8:53 (DNS resolver routes to server via NS delegation)
-3. Alternative: change address to ${SERVER_IP} for direct connection
-4. Use as SOCKS5 proxy: 127.0.0.1:7891
-5. For Telegram: Settings > Proxy > SOCKS5 > 127.0.0.1:7891
+Two configs included:
 
-DNS resolvers to try: 8.8.8.8, 1.1.1.1, your ISP's DNS
+  xdns-config.json        Via DNS resolver (8.8.8.8) — stealthier, may reconnect periodically
+  xdns-direct-config.json Via direct server connection — more stable, less stealthy
+
+Setup:
+1. Import one of the configs into an Xray-compatible app with FinalMask support
+2. Use as SOCKS5 proxy: 127.0.0.1:7891
+3. For Telegram: tap https://t.me/socks?server=127.0.0.1&port=7891
+
+Tips:
+- Try the DNS resolver config first (stealthier)
+- Switch to direct if connections keep dropping
+- Other DNS resolvers to try: 1.1.1.1, your ISP's DNS
 
 Telegram quick setup (after XDNS client is connected):
   Tap this link to add proxy to Telegram:

@@ -572,6 +572,7 @@ elif [[ -f "$TEMPLATE_FILE" ]]; then
 
     # Get XDNS info
     CONFIG_XDNS=$(cat "$OUTPUT_DIR/xdns-config.json" 2>/dev/null || echo "")
+    CONFIG_XDNS_DIRECT=$(cat "$OUTPUT_DIR/xdns-direct-config.json" 2>/dev/null || echo "")
     XDNS_DISPLAY=""
     [[ -z "$CONFIG_XDNS" ]] && XDNS_DISPLAY="display:none"
 
@@ -732,9 +733,11 @@ with open(filepath, 'w') as f:
     # XDNS config (multiline JSON)
     if [[ -n "${CONFIG_XDNS:-}" ]]; then
         replace_placeholder "{{CONFIG_XDNS}}" "$CONFIG_XDNS"
+        replace_placeholder "{{CONFIG_XDNS_DIRECT}}" "${CONFIG_XDNS_DIRECT:-XDNS direct config not available}"
         replace_placeholder "{{XDNS_DISPLAY}}" ""
     else
         replace_placeholder "{{CONFIG_XDNS}}" "XDNS not enabled"
+        replace_placeholder "{{CONFIG_XDNS_DIRECT}}" "XDNS not enabled"
         replace_placeholder "{{XDNS_DISPLAY}}" "display:none"
     fi
 
