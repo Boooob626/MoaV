@@ -132,8 +132,11 @@ services:
     environment:
       - DNSTT_DOMAIN=${DNSTT_SUBDOMAIN:-t}.${DOMAIN}
       - SLIPSTREAM_DOMAIN=${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}
+      - XDNS_DOMAIN=${XDNS_SUBDOMAIN:-x}.${DOMAIN}
       - ENABLE_DNSTT=${ENABLE_DNSTT:-true}
       - ENABLE_SLIPSTREAM=${ENABLE_SLIPSTREAM:-false}
+      - ENABLE_XDNS=${ENABLE_XDNS:-true}
+      - XDNS_BACKEND=xray:5355
       - TZ=${TZ:-UTC}
     profiles:
       - dnstunnel
@@ -425,21 +428,24 @@ services:
       - all
 
   # ===========================================================================
-  # XRAY: VLESS+XHTTP+Reality (Xray-core)
-  # XHTTP splits traffic into separate HTTP connections — no distinctive ALPN
+  # XRAY: VLESS+XHTTP+Reality+XDNS (Xray-core)
+  # XHTTP splits traffic into HTTP connections, XDNS tunnels through DNS queries
+  # Built from source for latest FinalMask/XDNS support
   # ===========================================================================
   xray:
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.xray
       args:
-        XRAY_VERSION: ${XRAY_VERSION:-25.3.6}
+        XRAY_BRANCH: ${XRAY_BRANCH:-main}
     container_name: moav-xray
     restart: unless-stopped
     networks:
       - moav_net
     ports:
       - "${PORT_XHTTP:-2096}:${PORT_XHTTP:-2096}/tcp"
+    expose:
+      - "5355"
     volumes:
       - ./configs/xray:/etc/xray:ro
       - moav_state:/state:ro
@@ -447,6 +453,7 @@ services:
       - TZ=${TZ:-UTC}
     profiles:
       - xhttp
+      - dnstunnel
       - all
 
   # ===========================================================================

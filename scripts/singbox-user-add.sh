@@ -430,6 +430,80 @@ EOF
     log_info "Generated XHTTP client config"
 fi
 
+# Generate XDNS client config if enabled
+if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
+    _xdns_domain="${XDNS_SUBDOMAIN:-x}.${DOMAIN}"
+    _xdns_mtu="${XDNS_MTU:-35}"
+    log_info "Generating XDNS client config for $USERNAME..."
+
+    cat > "$OUTPUT_DIR/xdns-config.json" <<XDNSEOF
+{
+  "remarks": "MoaV-XDNS-${USERNAME}",
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 7891,
+      "protocol": "socks",
+      "settings": {"auth": "noauth", "udp": true}
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "xdns-out",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "8.8.8.8",
+            "port": 53,
+            "users": [{"id": "${USER_UUID}", "encryption": "none"}]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "kcp",
+        "kcpSettings": {
+          "mtu": ${_xdns_mtu},
+          "tti": 100,
+          "uplinkCapacity": 0,
+          "downlinkCapacity": 0,
+          "congestion": true
+        },
+        "finalmask": {
+          "udp": [{"type": "xdns", "settings": {"domain": "${_xdns_domain}"}}]
+        }
+      }
+    }
+  ]
+}
+XDNSEOF
+
+    cat > "$OUTPUT_DIR/xdns.txt" <<EOF
+XDNS (DNS Tunnel via Xray mKCP) Configuration for $USERNAME
+============================================================
+
+Protocol: VLESS + mKCP + XDNS (via Xray-core)
+Domain: ${_xdns_domain}
+MTU: ${_xdns_mtu}
+
+This protocol tunnels VPN traffic through DNS queries.
+It works when almost everything except DNS is blocked.
+Speed is slow but connectivity is reliable.
+
+Client Setup:
+1. Import xdns-config.json into an Xray-compatible app (v2rayNG, Streisand, Hiddify)
+2. The config connects to 8.8.8.8:53 — change this to a working DNS resolver if needed
+3. DNS resolvers to try: 8.8.8.8, 1.1.1.1, your ISP's DNS
+
+Notes:
+- MTU ${_xdns_mtu} works with most DNS resolvers (increase to 67 or 130 for faster speed if your resolver allows)
+- This proxy is slow — best used for Telegram or lightweight browsing
+- Requires NS record: ${XDNS_SUBDOMAIN:-x} -> dns.${DOMAIN} on your DNS provider
+EOF
+
+    log_info "Generated XDNS client config"
+fi
+
 # Add user to telemt (Telegram MTProxy) if config exists
 TELEMT_CONFIG="configs/telemt/config.toml"
 if [[ "${ENABLE_TELEMT:-true}" == "true" ]] && [[ -f "$TELEMT_CONFIG" ]]; then

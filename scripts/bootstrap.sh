@@ -643,6 +643,53 @@ if [[ "${ENABLE_XHTTP:-false}" == "true" ]]; then
 
     envsubst < /configs/xray/config.json.template > /configs/xray/config.json
 
+    # Add XDNS inbound if enabled
+    if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
+        xdns_domain="${XDNS_SUBDOMAIN:-x}.${DOMAIN}"
+        xdns_mtu="${XDNS_MTU:-35}"
+        log_info "Adding XDNS inbound (domain: $xdns_domain, mtu: $xdns_mtu)..."
+
+        # Insert XDNS inbound into the inbounds array using python (jq alternative for complex JSON)
+        python3 -c "
+import json, sys
+with open('/configs/xray/config.json') as f:
+    config = json.load(f)
+xdns_inbound = {
+    'tag': 'vless-xdns',
+    'listen': '0.0.0.0',
+    'port': 5355,
+    'protocol': 'vless',
+    'settings': {
+        'clients': config['inbounds'][1]['settings']['clients'],
+        'decryption': 'none'
+    },
+    'streamSettings': {
+        'network': 'kcp',
+        'kcpSettings': {
+            'mtu': int('$xdns_mtu'),
+            'tti': 100,
+            'uplinkCapacity': 0,
+            'downlinkCapacity': 0,
+            'congestion': True
+        },
+        'finalmask': {
+            'udp': [{'type': 'xdns', 'settings': {'domain': '$xdns_domain'}}]
+        }
+    }
+}
+config['inbounds'].append(xdns_inbound)
+# Add routing rule for XDNS -> direct
+api_rule_idx = next((i for i, r in enumerate(config['routing']['rules']) if r.get('inboundTag') == ['api-in']), 0)
+config['routing']['rules'].insert(api_rule_idx + 1, {
+    'inboundTag': ['vless-xdns'],
+    'outboundTag': 'direct',
+    'type': 'field'
+})
+with open('/configs/xray/config.json', 'w') as f:
+    json.dump(config, f, indent=2)
+" && log_info "XDNS inbound added to Xray config" || log_error "Failed to add XDNS inbound"
+    fi
+
     log_info "Xray configuration written to /configs/xray/config.json"
 fi
 

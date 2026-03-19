@@ -2160,7 +2160,10 @@ doctor_check_dns() {
         slipstream_enabled=true
     fi
 
-    if [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
+    local xdns_pre_enabled=""
+    xdns_pre_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "true")
+
+    if [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" || "$xdns_pre_enabled" == "true" ]]; then
         local dns_host="dns.${domain}"
         if [[ -n "$server_ip" ]]; then
             if ! doctor_check_a_record "DNS nameserver A record" "$dns_host" "$server_ip" "set A dns -> ${server_ip} (DNS only)"; then
@@ -2185,8 +2188,18 @@ doctor_check_dns() {
                 failures=$((failures + 1))
             fi
         fi
+
+        local xdns_enabled=""
+        xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "true")
+        if [[ "$xdns_enabled" == "true" ]]; then
+            local xdns_subdomain=""
+            xdns_subdomain=$(get_env_val "XDNS_SUBDOMAIN" "$env_file" "x")
+            if ! doctor_check_ns_record "XDNS NS record" "${xdns_subdomain}.${domain}" "$dns_host" "set NS ${xdns_subdomain} -> ${dns_host}"; then
+                failures=$((failures + 1))
+            fi
+        fi
     else
-        info "DNS tunnel checks skipped: dnstt and Slipstream are disabled."
+        info "DNS tunnel checks skipped: dnstt, Slipstream, and XDNS are disabled."
     fi
 
     cdn_subdomain=$(get_env_val "CDN_SUBDOMAIN" "$env_file" "")
