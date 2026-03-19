@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **XDNS protocol (VLESS+mKCP+DNS)** — DNS tunnel via Xray-core FinalMask, encodes VPN traffic inside DNS queries
+  - Integrated into dns-router alongside dnstt and Slipstream (routed by domain suffix)
+  - Runs as additional inbound in existing xray container (no separate service needed)
+  - Configurable MTU for different DNS resolver compatibility (35/67/130)
+  - Client config generated as JSON file in user bundles
+  - NS delegation check added to `moav doctor dns`
+- **Xray-core built from source** — Dockerfile changed from pre-built binary download to Go multi-stage build from main branch, ensuring latest FinalMask/XDNS support and PR #5773 MTU fix
+
 ## [1.6.2] - 2026-03-17
 
 ### Added

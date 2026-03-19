@@ -8,7 +8,7 @@ Multi-protocol censorship circumvention stack optimized for hostile network envi
 
 ## Features
 
-- **Multiple protocols** - Reality (VLESS), Trojan, Hysteria2, XHTTP (VLESS+XHTTP+Reality), TrustTunnel, AmneziaWG, WireGuard (direct & wstunnel), DNS tunnels (dnstt + Slipstream), Telegram MTProxy, CDN (VLESS+WS)
+- **Multiple protocols** - Reality (VLESS), Trojan, Hysteria2, XHTTP (VLESS+XHTTP+Reality), XDNS (mKCP DNS tunnel), TrustTunnel, AmneziaWG, WireGuard (direct & wstunnel), DNS tunnels (dnstt + Slipstream), Telegram MTProxy, CDN (VLESS+WS)
 - **Stealth-first** - All traffic looks like normal HTTPS, WebSocket, DNS, or IMAPS
 - **Per-user credentials** - Create, revoke, and manage users independently
 - **Easy deployment** - Docker Compose based, single command setup
