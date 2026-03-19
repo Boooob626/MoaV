@@ -457,8 +457,8 @@ if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
       "settings": {
         "vnext": [
           {
-            "address": "8.8.8.8",
-            "port": 53,
+            "address": "${SERVER_IP}",
+            "port": ${PORT_XDNS:-53},
             "users": [{"id": "${USER_UUID}", "encryption": "none"}]
           }
         ]
@@ -516,11 +516,9 @@ Recommended clients:
 
 Setup with xdns-config.json:
 1. Import xdns-config.json into an Xray-compatible app
-2. The config connects to 8.8.8.8:53 — change to a working DNS resolver if needed
+2. The config connects directly to ${SERVER_IP}:${PORT_XDNS:-5355}
 3. Use as SOCKS5 proxy: 127.0.0.1:7891
 4. Best for Telegram only: Settings > Proxy > SOCKS5 > 127.0.0.1:7891
-
-DNS resolvers to try: 8.8.8.8, 1.1.1.1, your ISP's DNS
 
 MTU tuning:
 - MTU ${_xdns_mtu} = safest (works with all resolvers)

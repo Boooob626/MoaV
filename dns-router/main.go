@@ -103,17 +103,6 @@ func buildRoutes() ([]Route, error) {
 		log.Printf("[dns-router] Route: *.%s -> %s (slipstream)", domain, backend)
 	}
 
-	enableXdns := strings.ToLower(envOr("ENABLE_XDNS", "false"))
-	if enableXdns == "true" {
-		domain := os.Getenv("XDNS_DOMAIN")
-		if domain == "" {
-			return nil, fmt.Errorf("XDNS_DOMAIN required when ENABLE_XDNS=true")
-		}
-		backend := envOr("XDNS_BACKEND", "xray:5355")
-		routes = append(routes, Route{Domain: strings.ToLower(domain), Backend: backend})
-		log.Printf("[dns-router] Route: *.%s -> %s (xdns)", domain, backend)
-	}
-
 	return routes, nil
 }
 

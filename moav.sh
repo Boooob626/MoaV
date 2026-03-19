@@ -2351,7 +2351,17 @@ doctor_check_ports() {
     local slip_enabled
     slip_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
 
-    if [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
+    local xdns_enabled
+    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "false")
+
+    # Check XDNS vs dnstt/slipstream port 53 conflict
+    if [[ "$xdns_enabled" == "true" ]] && [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
+        echo -e "    ${YELLOW}!${NC} XDNS and dnstt/Slipstream both need port 53 — only one can run"
+        echo -e "      ${DIM}Disable one: set ENABLE_XDNS=false or ENABLE_DNSTT=false in .env${NC}"
+        pass=false
+    fi
+
+    if [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]] && [[ "$xdns_enabled" != "true" ]]; then
         if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
             if systemctl is-active systemd-resolved &>/dev/null; then
                 echo -e "    ${RED}✗${NC} Port 53 in use by systemd-resolved (DNS tunnels need it)"
@@ -5263,12 +5273,23 @@ cmd_start() {
         profiles="--profile proxy --profile wireguard --profile dnstunnel --profile trusttunnel --profile admin --profile conduit --profile snowflake"
     fi
 
-    # Check port 53 if DNS tunnels are being started AND enabled
+    # Check port 53 conflicts for DNS tunnels
     local dnstt_enabled
     dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "true")
     local slipstream_enabled
     slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "false")
-    if echo "$profiles" | grep -qE "dnstunnel|all" && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
+    local xdns_start_enabled
+    xdns_start_enabled=$(get_env_val "ENABLE_XDNS" "false")
+
+    # Warn if both XDNS and dnstt/Slipstream are enabled (port 53 conflict)
+    if [[ "$xdns_start_enabled" == "true" ]] && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
+        echo ""
+        warn "XDNS and dnstt/Slipstream both need port 53 — only one can be active."
+        echo "  Disable one in .env: set ENABLE_XDNS=false or ENABLE_DNSTT=false"
+        echo ""
+    fi
+
+    if echo "$profiles" | grep -qE "dnstunnel|all" && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]] && [[ "$xdns_start_enabled" != "true" ]]; then
         if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
             echo ""
             warn "Port 53 is in use (likely by systemd-resolved)"

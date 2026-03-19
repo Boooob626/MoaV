@@ -132,11 +132,8 @@ services:
     environment:
       - DNSTT_DOMAIN=${DNSTT_SUBDOMAIN:-t}.${DOMAIN}
       - SLIPSTREAM_DOMAIN=${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}
-      - XDNS_DOMAIN=${XDNS_SUBDOMAIN:-x}.${DOMAIN}
       - ENABLE_DNSTT=${ENABLE_DNSTT:-true}
       - ENABLE_SLIPSTREAM=${ENABLE_SLIPSTREAM:-false}
-      - ENABLE_XDNS=${ENABLE_XDNS:-true}
-      - XDNS_BACKEND=xray:5355
       - TZ=${TZ:-UTC}
     profiles:
       - dnstunnel
@@ -444,8 +441,7 @@ services:
       - moav_net
     ports:
       - "${PORT_XHTTP:-2096}:${PORT_XHTTP:-2096}/tcp"
-    expose:
-      - "5355"
+      - "${PORT_XDNS:-53}:5355/udp"
     volumes:
       - ./configs/xray:/etc/xray:ro
       - moav_state:/state:ro
@@ -826,6 +822,10 @@ services:
       - ENABLE_XHTTP=${ENABLE_XHTTP:-false}
       - PORT_XHTTP=${PORT_XHTTP:-2096}
       - XHTTP_REALITY_TARGET=${XHTTP_REALITY_TARGET:-dl.google.com:443}
+      - ENABLE_XDNS=${ENABLE_XDNS:-false}
+      - XDNS_SUBDOMAIN=${XDNS_SUBDOMAIN:-x}
+      - XDNS_MTU=${XDNS_MTU:-35}
+      - PORT_XDNS=${PORT_XDNS:-53}
       - ENABLE_ADMIN_UI=${ENABLE_ADMIN_UI:-true}
       - CDN_SUBDOMAIN=${CDN_SUBDOMAIN:-}
       - CDN_DOMAIN=${CDN_DOMAIN:-}
