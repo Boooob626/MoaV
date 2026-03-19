@@ -523,6 +523,10 @@ Setup with xdns-config.json:
 
 DNS resolvers to try: 8.8.8.8, 1.1.1.1, your ISP's DNS
 
+Telegram quick setup (after XDNS client is connected):
+  Tap this link to add proxy to Telegram:
+  https://t.me/socks?server=127.0.0.1&port=7891
+
 MTU tuning (client side only — server uses MTU 900 for return path):
 - MTU ${_xdns_mtu} = safest (works with all resolvers)
 - MTU 67 = works with most resolvers (faster)
