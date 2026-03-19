@@ -544,6 +544,58 @@ if [[ "${ENABLE_TELEMT:-true}" == "true" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
+# Generate XDNS client configs (if enabled)
+# -----------------------------------------------------------------------------
+if [[ "${ENABLE_XDNS:-false}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
+    if [[ -f "$OUTPUT_DIR/xdns-config.json" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
+        log_info "  - XDNS config exists, skipping"
+    else
+        BUNDLE_CHANGED=true
+        _xdns_domain="${XDNS_SUBDOMAIN:-x}.${DOMAIN}"
+        _xdns_mtu="${XDNS_MTU:-35}"
+
+        # Load user UUID
+        _xdns_uuid=""
+        if [[ -f "$STATE_DIR/users/$USER_ID/uuid.env" ]]; then
+            source "$STATE_DIR/users/$USER_ID/uuid.env"
+            _xdns_uuid="${USER_UUID:-}"
+        fi
+
+        if [[ -n "$_xdns_uuid" ]]; then
+            # DNS resolver config
+            cat > "$OUTPUT_DIR/xdns-config.json" <<XDNSEOF
+{
+  "remarks": "MoaV-XDNS-${USER_ID} (via DNS)",
+  "log": {"loglevel": "warning"},
+  "inbounds": [{"listen": "127.0.0.1", "port": 7891, "protocol": "socks", "settings": {"auth": "noauth", "udp": true}}],
+  "outbounds": [
+    {"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "8.8.8.8", "port": 53, "users": [{"id": "$_xdns_uuid", "encryption": "none"}]}]}, "streamSettings": {"network": "kcp", "kcpSettings": {"mtu": $_xdns_mtu, "tti": 100, "uplinkCapacity": 0, "downlinkCapacity": 0, "congestion": true}, "finalmask": {"udp": [{"type": "xdns", "settings": {"domain": "$_xdns_domain"}}]}}},
+    {"tag": "direct", "protocol": "freedom"}
+  ],
+  "routing": {"rules": [{"type": "field", "ip": ["::/0"], "outboundTag": "direct"}]}
+}
+XDNSEOF
+
+            # Direct connection config
+            cat > "$OUTPUT_DIR/xdns-direct-config.json" <<XDNSEOF2
+{
+  "remarks": "MoaV-XDNS-${USER_ID} (direct)",
+  "log": {"loglevel": "warning"},
+  "inbounds": [{"listen": "127.0.0.1", "port": 7891, "protocol": "socks", "settings": {"auth": "noauth", "udp": true}}],
+  "outbounds": [
+    {"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "${SERVER_IP}", "port": ${PORT_XDNS:-53}, "users": [{"id": "$_xdns_uuid", "encryption": "none"}]}]}, "streamSettings": {"network": "kcp", "kcpSettings": {"mtu": $_xdns_mtu, "tti": 100, "uplinkCapacity": 0, "downlinkCapacity": 0, "congestion": true}, "finalmask": {"udp": [{"type": "xdns", "settings": {"domain": "$_xdns_domain"}}]}}},
+    {"tag": "direct", "protocol": "freedom"}
+  ],
+  "routing": {"rules": [{"type": "field", "ip": ["::/0"], "outboundTag": "direct"}]}
+}
+XDNSEOF2
+
+            log_info "  - XDNS configs generated"
+        fi
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # Generate README.html from template
 # -----------------------------------------------------------------------------
 TEMPLATE_FILE="/docs/client-guide-template.html"
