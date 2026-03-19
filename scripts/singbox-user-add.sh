@@ -437,9 +437,11 @@ if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
     _xdns_mtu="${XDNS_MTU:-35}"
     log_info "Generating XDNS client config for $USERNAME..."
 
+    # Full Xray config (for apps that support custom JSON import)
     cat > "$OUTPUT_DIR/xdns-config.json" <<XDNSEOF
 {
   "remarks": "MoaV-XDNS-${USERNAME}",
+  "log": {"loglevel": "warning"},
   "inbounds": [
     {
       "listen": "127.0.0.1",
@@ -450,7 +452,7 @@ if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
   ],
   "outbounds": [
     {
-      "tag": "xdns-out",
+      "tag": "proxy",
       "protocol": "vless",
       "settings": {
         "vnext": [
@@ -474,8 +476,21 @@ if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
           "udp": [{"type": "xdns", "settings": {"domain": "${_xdns_domain}"}}]
         }
       }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
     }
-  ]
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["::/0"],
+        "outboundTag": "direct"
+      }
+    ]
+  }
 }
 XDNSEOF
 
@@ -483,23 +498,35 @@ XDNSEOF
 XDNS (DNS Tunnel via Xray mKCP) Configuration for $USERNAME
 ============================================================
 
-Protocol: VLESS + mKCP + XDNS (via Xray-core)
+Protocol: VLESS + mKCP + XDNS FinalMask (via Xray-core)
 Domain: ${_xdns_domain}
+UUID: ${USER_UUID}
 MTU: ${_xdns_mtu}
 
 This protocol tunnels VPN traffic through DNS queries.
 It works when almost everything except DNS is blocked.
 Speed is slow but connectivity is reliable.
 
-Client Setup:
-1. Import xdns-config.json into an Xray-compatible app (v2rayNG, Streisand, Hiddify)
-2. The config connects to 8.8.8.8:53 — change this to a working DNS resolver if needed
-3. DNS resolvers to try: 8.8.8.8, 1.1.1.1, your ISP's DNS
+IMPORTANT: XDNS requires Xray-core with FinalMask support.
+Standard v2rayNG may NOT support this yet.
 
-Notes:
-- MTU ${_xdns_mtu} works with most DNS resolvers (increase to 67 or 130 for faster speed if your resolver allows)
-- This proxy is slow — best used for Telegram or lightweight browsing
-- Requires NS record: ${XDNS_SUBDOMAIN:-x} -> dns.${DOMAIN} on your DNS provider
+Recommended clients:
+- Happ (Android) — beta, supports FinalMask
+- Xray CLI (any platform) — run: xray run -c xdns-config.json
+
+Setup with xdns-config.json:
+1. Import xdns-config.json into an Xray-compatible app
+2. The config connects to 8.8.8.8:53 — change to a working DNS resolver if needed
+3. Use as SOCKS5 proxy: 127.0.0.1:7891
+4. Best for Telegram only: Settings > Proxy > SOCKS5 > 127.0.0.1:7891
+
+DNS resolvers to try: 8.8.8.8, 1.1.1.1, your ISP's DNS
+
+MTU tuning:
+- MTU ${_xdns_mtu} = safest (works with all resolvers)
+- MTU 67 = works with most resolvers (faster)
+- MTU 130 = unrestricted resolvers only (fastest)
+- Change MTU in BOTH server (.env XDNS_MTU) and client config (kcpSettings.mtu)
 EOF
 
     log_info "Generated XDNS client config"

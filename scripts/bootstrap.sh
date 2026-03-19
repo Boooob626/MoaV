@@ -681,13 +681,9 @@ xdns_inbound = {
     }
 }
 config['inbounds'].append(xdns_inbound)
-# Add routing rule for XDNS -> direct
-api_rule_idx = next((i for i, r in enumerate(config['routing']['rules']) if r.get('inboundTag') == ['api-in']), 0)
-config['routing']['rules'].insert(api_rule_idx + 1, {
-    'inboundTag': ['vless-xdns'],
-    'outboundTag': 'direct',
-    'type': 'field'
-})
+# No special routing rule needed for XDNS — traffic falls through to:
+# 1. IPv6 blackhole (blocks IPv6)
+# 2. Catch-all direct (handles IPv4)
 with open('/configs/xray/config.json', 'w') as f:
     json.dump(config, f, indent=2)
 " && log_info "XDNS inbound added to Xray config" || log_error "Failed to add XDNS inbound"
