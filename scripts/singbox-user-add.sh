@@ -457,8 +457,8 @@ if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
       "settings": {
         "vnext": [
           {
-            "address": "${SERVER_IP}",
-            "port": ${PORT_XDNS:-53},
+            "address": "8.8.8.8",
+            "port": 53,
             "users": [{"id": "${USER_UUID}", "encryption": "none"}]
           }
         ]
@@ -515,16 +515,19 @@ Recommended clients:
 - Xray CLI (any platform) — run: xray run -c xdns-config.json
 
 Setup with xdns-config.json:
-1. Import xdns-config.json into an Xray-compatible app
-2. The config connects directly to ${SERVER_IP}:${PORT_XDNS:-5355}
-3. Use as SOCKS5 proxy: 127.0.0.1:7891
-4. Best for Telegram only: Settings > Proxy > SOCKS5 > 127.0.0.1:7891
+1. Import xdns-config.json into an Xray-compatible app with FinalMask support
+2. Default: connects via 8.8.8.8:53 (DNS resolver routes to server via NS delegation)
+3. Alternative: change address to ${SERVER_IP} for direct connection
+4. Use as SOCKS5 proxy: 127.0.0.1:7891
+5. For Telegram: Settings > Proxy > SOCKS5 > 127.0.0.1:7891
 
-MTU tuning:
+DNS resolvers to try: 8.8.8.8, 1.1.1.1, your ISP's DNS
+
+MTU tuning (client side only — server uses MTU 900 for return path):
 - MTU ${_xdns_mtu} = safest (works with all resolvers)
 - MTU 67 = works with most resolvers (faster)
 - MTU 130 = unrestricted resolvers only (fastest)
-- Change MTU in BOTH server (.env XDNS_MTU) and client config (kcpSettings.mtu)
+- MTU depends on domain name length: shorter domain = higher MTU possible
 EOF
 
     log_info "Generated XDNS client config"

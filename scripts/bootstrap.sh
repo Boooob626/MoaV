@@ -669,7 +669,7 @@ xdns_inbound = {
     'streamSettings': {
         'network': 'kcp',
         'kcpSettings': {
-            'mtu': int('$xdns_mtu'),
+            'mtu': 900,
             'tti': 100,
             'uplinkCapacity': 0,
             'downlinkCapacity': 0,
