@@ -72,10 +72,14 @@ jobs:
 
           ## Documentation
 
-          - [Setup Guide](https://github.com/shayanb/MoaV/blob/main/docs/SETUP.md) - Complete installation instructions
-          - [Client Setup](https://github.com/shayanb/MoaV/blob/main/docs/CLIENTS.md) - How to connect from devices
-          - [DNS Configuration](https://github.com/shayanb/MoaV/blob/main/docs/DNS.md) - DNS records setup
-          - [Troubleshooting](https://github.com/shayanb/MoaV/blob/main/docs/TROUBLESHOOTING.md) - Common issues and solutions
+          **[moav.sh/docs](https://moav.sh/docs)** — Full documentation
+
+          - [Setup Guide](https://moav.sh/docs/SETUP) — Complete installation instructions
+          - [Client Setup](https://moav.sh/docs/CLIENTS) — How to connect from devices
+          - [DNS Configuration](https://moav.sh/docs/DNS) — DNS records setup
+          - [CLI Reference](https://moav.sh/docs/CLI) — All commands and options
+          - [Monitoring](https://moav.sh/docs/MONITORING) — Grafana dashboards and metrics
+          - [Troubleshooting](https://moav.sh/docs/TROUBLESHOOTING) — Common issues and solutions
           GUIDE_EOF
 
           if [ "${{ steps.existing.outputs.exists }}" = "true" ]; then
@@ -110,13 +114,13 @@ jobs:
           if [ "${{ steps.existing.outputs.exists }}" = "true" ]; then
             echo "Updating existing release..."
             gh release edit "$TAG" \
-              --title "MoaV $TAG" \
+              --title "$TAG" \
               --notes-file release_body.txt \
               $PRERELEASE
           else
             echo "Creating new release..."
             gh release create "$TAG" \
-              --title "MoaV $TAG" \
+              --title "$TAG" \
               --notes-file release_body.txt \
               $PRERELEASE
           fi
