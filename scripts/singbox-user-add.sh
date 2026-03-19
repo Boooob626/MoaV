@@ -379,10 +379,11 @@ if [[ "${ENABLE_XHTTP:-false}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
         log_info "User '$USERNAME' already exists in Xray config, skipping..."
     else
         # Add new client entry to the vless-xhttp-reality inbound (flow MUST be empty for XHTTP)
+        # Add to ALL vless inbounds (xhttp-reality AND xdns)
         jq --arg id "$USER_UUID" --arg email "${USERNAME}@moav" \
-            '(.inbounds[] | select(.tag == "vless-xhttp-reality")).settings.clients += [{"id": $id, "email": $email, "flow": ""}]' \
+            '(.inbounds[] | select(.protocol == "vless" and .tag != null and (.tag | startswith("vless-")))).settings.clients += [{"id": $id, "email": $email, "flow": ""}]' \
             "$XRAY_CONFIG" > /tmp/xray.tmp && mv -f /tmp/xray.tmp "$XRAY_CONFIG"
-        log_info "Added $USERNAME to Xray config"
+        log_info "Added $USERNAME to Xray config (all VLESS inbounds)"
     fi
 
     # Generate XHTTP client configs
@@ -428,6 +429,176 @@ Instructions:
 EOF
 
     log_info "Generated XHTTP client config"
+fi
+
+# Generate XDNS client config if enabled
+if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
+    _xdns_domain="${XDNS_SUBDOMAIN:-x}.${DOMAIN}"
+    _xdns_mtu="${XDNS_MTU:-35}"
+    log_info "Generating XDNS client config for $USERNAME..."
+
+    # Full Xray config (for apps that support custom JSON import)
+    # Config via DNS resolver (stealthier but may drop after a few minutes)
+    cat > "$OUTPUT_DIR/xdns-config.json" <<XDNSEOF
+{
+  "remarks": "MoaV-XDNS-${USERNAME} (via DNS)",
+  "log": {"loglevel": "warning"},
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 7891,
+      "protocol": "socks",
+      "settings": {"auth": "noauth", "udp": true}
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "8.8.8.8",
+            "port": 53,
+            "users": [{"id": "${USER_UUID}", "encryption": "none"}]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "kcp",
+        "kcpSettings": {
+          "mtu": ${_xdns_mtu},
+          "tti": 100,
+          "uplinkCapacity": 0,
+          "downlinkCapacity": 0,
+          "congestion": true
+        },
+        "finalmask": {
+          "udp": [{"type": "xdns", "settings": {"domain": "${_xdns_domain}"}}]
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["::/0"],
+        "outboundTag": "direct"
+      }
+    ]
+  }
+}
+XDNSEOF
+
+    # Config via direct connection (more stable but less stealthy)
+    cat > "$OUTPUT_DIR/xdns-direct-config.json" <<XDNSEOF2
+{
+  "remarks": "MoaV-XDNS-${USERNAME} (direct)",
+  "log": {"loglevel": "warning"},
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 7891,
+      "protocol": "socks",
+      "settings": {"auth": "noauth", "udp": true}
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "${SERVER_IP}",
+            "port": ${PORT_XDNS:-53},
+            "users": [{"id": "${USER_UUID}", "encryption": "none"}]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "kcp",
+        "kcpSettings": {
+          "mtu": ${_xdns_mtu},
+          "tti": 100,
+          "uplinkCapacity": 0,
+          "downlinkCapacity": 0,
+          "congestion": true
+        },
+        "finalmask": {
+          "udp": [{"type": "xdns", "settings": {"domain": "${_xdns_domain}"}}]
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["::/0"],
+        "outboundTag": "direct"
+      }
+    ]
+  }
+}
+XDNSEOF2
+
+    cat > "$OUTPUT_DIR/xdns.txt" <<EOF
+XDNS (DNS Tunnel via Xray mKCP) Configuration for $USERNAME
+============================================================
+
+Protocol: VLESS + mKCP + XDNS FinalMask (via Xray-core)
+Domain: ${_xdns_domain}
+UUID: ${USER_UUID}
+MTU: ${_xdns_mtu}
+
+This protocol tunnels VPN traffic through DNS queries.
+It works when almost everything except DNS is blocked.
+Speed is slow but connectivity is reliable.
+
+IMPORTANT: XDNS requires Xray-core with FinalMask support.
+Standard v2rayNG may NOT support this yet.
+
+Recommended clients:
+- Happ (Android) — beta, supports FinalMask
+- Xray CLI (any platform) — run: xray run -c xdns-config.json
+
+Two configs included:
+
+  xdns-config.json        Via DNS resolver (8.8.8.8) — stealthier, may reconnect periodically
+  xdns-direct-config.json Via direct server connection — more stable, less stealthy
+
+Setup:
+1. Import one of the configs into an Xray-compatible app with FinalMask support
+2. Use as SOCKS5 proxy: 127.0.0.1:7891
+3. For Telegram: tap https://t.me/socks?server=127.0.0.1&port=7891
+
+Tips:
+- Try the DNS resolver config first (stealthier)
+- Switch to direct if connections keep dropping
+- Other DNS resolvers to try: 1.1.1.1, your ISP's DNS
+
+Telegram quick setup (after XDNS client is connected):
+  Tap this link to add proxy to Telegram:
+  https://t.me/socks?server=127.0.0.1&port=7891
+
+MTU tuning (client side only — server uses MTU 900 for return path):
+- MTU ${_xdns_mtu} = safest (works with all resolvers)
+- MTU 67 = works with most resolvers (faster)
+- MTU 130 = unrestricted resolvers only (fastest)
+- MTU depends on domain name length: shorter domain = higher MTU possible
+EOF
+
+    log_info "Generated XDNS client config"
 fi
 
 # Add user to telemt (Telegram MTProxy) if config exists

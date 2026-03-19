@@ -58,7 +58,9 @@ func main() {
 	}
 
 	if len(routes) == 0 {
-		log.Fatal("[dns-router] No routes configured. Set ENABLE_DNSTT=true and/or ENABLE_SLIPSTREAM=true")
+		log.Println("[dns-router] No routes configured (dnstt/Slipstream disabled). Exiting gracefully.")
+		log.Println("[dns-router] If using XDNS, it connects directly to xray — dns-router is not needed.")
+		os.Exit(0)
 	}
 
 	listenAddr := envOr("DNS_LISTEN", ":5353")

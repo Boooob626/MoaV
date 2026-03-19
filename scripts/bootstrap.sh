@@ -246,6 +246,9 @@ export ENABLE_TRUSTTUNNEL="${ENABLE_TRUSTTUNNEL:-true}"
 export ENABLE_XHTTP="${ENABLE_XHTTP:-false}"
 export PORT_XHTTP="${PORT_XHTTP:-2096}"
 export XHTTP_REALITY_TARGET="${XHTTP_REALITY_TARGET:-dl.google.com:443}"
+export ENABLE_XDNS="${ENABLE_XDNS:-true}"
+export XDNS_SUBDOMAIN="${XDNS_SUBDOMAIN:-x}"
+export XDNS_MTU="${XDNS_MTU:-35}"
 export ENABLE_TELEMT="${ENABLE_TELEMT:-true}"
 export PORT_TELEMT="${PORT_TELEMT:-993}"
 export TELEMT_TLS_DOMAIN="${TELEMT_TLS_DOMAIN:-dl.google.com}"
@@ -643,6 +646,49 @@ if [[ "${ENABLE_XHTTP:-false}" == "true" ]]; then
 
     envsubst < /configs/xray/config.json.template > /configs/xray/config.json
 
+    # Add XDNS inbound if enabled
+    if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
+        xdns_domain="${XDNS_SUBDOMAIN:-x}.${DOMAIN}"
+        xdns_mtu="${XDNS_MTU:-35}"
+        log_info "Adding XDNS inbound (domain: $xdns_domain, mtu: $xdns_mtu)..."
+
+        # Insert XDNS inbound into the inbounds array using python (jq alternative for complex JSON)
+        python3 -c "
+import json, sys
+with open('/configs/xray/config.json') as f:
+    config = json.load(f)
+xdns_inbound = {
+    'tag': 'vless-xdns',
+    'listen': '0.0.0.0',
+    'port': 5355,
+    'protocol': 'vless',
+    'settings': {
+        'clients': config['inbounds'][1]['settings']['clients'],
+        'decryption': 'none'
+    },
+    'streamSettings': {
+        'network': 'kcp',
+        'kcpSettings': {
+            'mtu': 900,
+            'tti': 100,
+            'uplinkCapacity': 0,
+            'downlinkCapacity': 0,
+            'congestion': True
+        },
+        'finalmask': {
+            'udp': [{'type': 'xdns', 'settings': {'domain': '$xdns_domain'}}]
+        }
+    }
+}
+config['inbounds'].append(xdns_inbound)
+# No special routing rule needed for XDNS — traffic falls through to:
+# 1. IPv6 blackhole (blocks IPv6)
+# 2. Catch-all direct (handles IPv4)
+with open('/configs/xray/config.json', 'w') as f:
+    json.dump(config, f, indent=2)
+" && log_info "XDNS inbound added to Xray config" || log_error "Failed to add XDNS inbound"
+    fi
+
     log_info "Xray configuration written to /configs/xray/config.json"
 fi
 
@@ -704,6 +750,14 @@ if [[ "$singbox_needed" == "true" ]]; then
 else
     log_info "sing-box not needed (no TLS protocols enabled)"
 fi
+
+# -----------------------------------------------------------------------------
+# Fix permissions on generated configs (admin container runs as non-root uid 1000)
+# -----------------------------------------------------------------------------
+chown -R 0:1000 /configs/ 2>/dev/null || true
+chmod -R g+r /configs/ 2>/dev/null || true
+chown -R 0:1000 /outputs/ 2>/dev/null || true
+chmod -R g+r /outputs/ 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
 # Mark as bootstrapped
