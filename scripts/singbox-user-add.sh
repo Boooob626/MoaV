@@ -379,10 +379,11 @@ if [[ "${ENABLE_XHTTP:-false}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
         log_info "User '$USERNAME' already exists in Xray config, skipping..."
     else
         # Add new client entry to the vless-xhttp-reality inbound (flow MUST be empty for XHTTP)
+        # Add to ALL vless inbounds (xhttp-reality AND xdns)
         jq --arg id "$USER_UUID" --arg email "${USERNAME}@moav" \
-            '(.inbounds[] | select(.tag == "vless-xhttp-reality")).settings.clients += [{"id": $id, "email": $email, "flow": ""}]' \
+            '(.inbounds[] | select(.protocol == "vless" and .tag != null and (.tag | startswith("vless-")))).settings.clients += [{"id": $id, "email": $email, "flow": ""}]' \
             "$XRAY_CONFIG" > /tmp/xray.tmp && mv -f /tmp/xray.tmp "$XRAY_CONFIG"
-        log_info "Added $USERNAME to Xray config"
+        log_info "Added $USERNAME to Xray config (all VLESS inbounds)"
     fi
 
     # Generate XHTTP client configs
