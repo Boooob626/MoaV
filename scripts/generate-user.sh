@@ -570,6 +570,11 @@ elif [[ -f "$TEMPLATE_FILE" ]]; then
     SLIPSTREAM_DOMAIN="${SLIPSTREAM_SUBDOMAIN:-s}.${DOMAIN}"
     CONFIG_SLIPSTREAM=$(cat "$OUTPUT_DIR/slipstream-instructions.txt" 2>/dev/null || echo "")
 
+    # Get XDNS info
+    CONFIG_XDNS=$(cat "$OUTPUT_DIR/xdns-config.json" 2>/dev/null || echo "")
+    XDNS_DISPLAY=""
+    [[ -z "$CONFIG_XDNS" ]] && XDNS_DISPLAY="display:none"
+
     # Get telemt info
     CONFIG_TELEMT=$(cat "$OUTPUT_DIR/telegram-proxy-link.txt" 2>/dev/null | tr -d '\n' || echo "")
 
@@ -722,6 +727,15 @@ with open(filepath, 'w') as f:
         replace_placeholder "{{CONFIG_SLIPSTREAM}}" "$CONFIG_SLIPSTREAM"
     else
         replace_placeholder "{{CONFIG_SLIPSTREAM}}" "Slipstream not enabled"
+    fi
+
+    # XDNS config (multiline JSON)
+    if [[ -n "${CONFIG_XDNS:-}" ]]; then
+        replace_placeholder "{{CONFIG_XDNS}}" "$CONFIG_XDNS"
+        replace_placeholder "{{XDNS_DISPLAY}}" ""
+    else
+        replace_placeholder "{{CONFIG_XDNS}}" "XDNS not enabled"
+        replace_placeholder "{{XDNS_DISPLAY}}" "display:none"
     fi
 
     # telemt (Telegram MTProxy) link
