@@ -6610,6 +6610,66 @@ cmd_migrate_ip() {
                     rm -f "$user_dir/slipstream-instructions.txt.bak"
                 fi
 
+                # Update AmneziaWG configs
+                if [[ -f "$user_dir/amneziawg.conf" ]]; then
+                    sed -i.bak "s/Endpoint = $old_ip:/Endpoint = $new_ip:/g" "$user_dir/amneziawg.conf"
+                    rm -f "$user_dir/amneziawg.conf.bak"
+                fi
+                if [[ -f "$user_dir/amneziawg-ipv6.conf" ]] && [[ -n "$new_ipv6" ]]; then
+                    if [[ -n "$old_ipv6" ]]; then
+                        sed -i.bak "s/Endpoint = \[$old_ipv6\]:/Endpoint = [$new_ipv6]:/g" "$user_dir/amneziawg-ipv6.conf"
+                    fi
+                    rm -f "$user_dir/amneziawg-ipv6.conf.bak"
+                fi
+
+                # Update Telegram MTProxy links
+                if [[ -f "$user_dir/telegram-proxy-link.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/telegram-proxy-link.txt"
+                    rm -f "$user_dir/telegram-proxy-link.txt.bak"
+                fi
+                if [[ -f "$user_dir/telegram-proxy-instructions.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/telegram-proxy-instructions.txt"
+                    rm -f "$user_dir/telegram-proxy-instructions.txt.bak"
+                fi
+
+                # Update XHTTP configs
+                if [[ -f "$user_dir/xhttp-vless.txt" ]]; then
+                    sed -i.bak "s/@$old_ip:/@$new_ip:/g" "$user_dir/xhttp-vless.txt"
+                    rm -f "$user_dir/xhttp-vless.txt.bak"
+                fi
+                if [[ -f "$user_dir/xhttp.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/xhttp.txt"
+                    rm -f "$user_dir/xhttp.txt.bak"
+                fi
+
+                # Update CDN VLESS config
+                if [[ -f "$user_dir/cdn-vless.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/cdn-vless.txt"
+                    rm -f "$user_dir/cdn-vless.txt.bak"
+                fi
+
+                # Update TrustTunnel config
+                if [[ -f "$user_dir/trusttunnel.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/trusttunnel.txt"
+                    rm -f "$user_dir/trusttunnel.txt.bak"
+                fi
+
+                # Update XDNS configs
+                if [[ -f "$user_dir/xdns-direct-config.json" ]]; then
+                    sed -i.bak "s/\"address\": \"$old_ip\"/\"address\": \"$new_ip\"/g" "$user_dir/xdns-direct-config.json"
+                    rm -f "$user_dir/xdns-direct-config.json.bak"
+                fi
+                if [[ -f "$user_dir/xdns.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/xdns.txt"
+                    rm -f "$user_dir/xdns.txt.bak"
+                fi
+
+                # Update README.html (catch-all for any remaining IPs)
+                if [[ -f "$user_dir/README.html" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/README.html"
+                    rm -f "$user_dir/README.html.bak"
+                fi
+
                 # Update README
                 if [[ -f "$user_dir/README.md" ]]; then
                     sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/README.md"
