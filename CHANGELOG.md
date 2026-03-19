@@ -7,16 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-03-19
+
 ### Added
-- **XDNS protocol (VLESS+mKCP+DNS)** — DNS tunnel via Xray-core FinalMask, encodes VPN traffic inside DNS-like packets
+- **XDNS protocol (VLESS+mKCP+DNS)** — DNS tunnel via Xray-core FinalMask, encodes VPN traffic inside DNS-like packets for use during heavy internet shutdowns
   - Runs as additional inbound in existing xray container on port 53 (direct, bypasses dns-router)
   - Mutually exclusive with dnstt/Slipstream (both use port 53) — `moav doctor` warns about conflicts
-  - Configurable MTU for different network conditions (35=safest, 67=most, 130=fastest)
-  - Client config generated as JSON file in user bundles (requires FinalMask-capable client)
-  - Best for Telegram and chat apps — too slow for web browsing
-  - NS delegation check added to `moav doctor dns`
-- **Xray-core built from source** — Dockerfile changed from pre-built binary download to Go multi-stage build from main branch, ensuring latest FinalMask/XDNS support and PR #5773 MTU fix
-- **`moav doctor` command** (PR [#79](https://github.com/shayanb/MoaV/pull/79)) — 9 diagnostic checks: docker, memory, disk, dns, services, config, ports, env, updates
+  - Server MTU 900 (return path), client MTU configurable (35/67/130) based on DNS resolver compatibility
+  - Client config generated as JSON file in user bundles with Telegram SOCKS proxy deep link
+  - Per-inbound traffic stats on Grafana: XDNS vs XHTTP traffic breakdown
+  - Best for Telegram and chat apps — not fast enough for web browsing
+  - Requires FinalMask-capable client (Happ beta, Xray CLI)
+- **Xray-core built from source** — Dockerfile changed from pre-built binary to Go multi-stage build from main branch, ensuring latest FinalMask/XDNS support and PR #5773 mKCP MTU fix
+- **`moav doctor` command** (PR [#79](https://github.com/shayanb/MoaV/pull/79)) — 9 diagnostic checks:
+  - `docker` — Docker daemon, Compose version, disk usage
+  - `memory` — RAM availability, warns if too low for monitoring
+  - `disk` — Free disk space with cleanup suggestions
+  - `dns` — DNS records for all enabled protocols including XDNS NS delegation
+  - `services` — Enabled vs running containers, crash-loop detection
+  - `config` — Bootstrap status, config file existence
+  - `ports` — Port availability, systemd-resolved conflicts, XDNS/dnstt port 53 conflict
+  - `env` — Missing `.env` variables compared to `.env.example`
+  - `updates` — Version check against latest GitHub release
+- **Xray per-inbound traffic metrics** — `xray_inbound_upload_bytes` and `xray_inbound_download_bytes` with inbound tag label; Grafana panels: "Traffic by Protocol" (timeseries) and "Protocol Traffic Total" (table)
+
+### Fixed
+- **DNS NS delegation check** — Fixed `dig +short NS` not returning subdomain NS records; now queries authoritative nameserver's AUTHORITY section
+- **Xray user-add to all VLESS inbounds** — New users are added to both `vless-xhttp-reality` and `vless-xdns` inbounds (previously only XHTTP)
+- **dns-router graceful exit** — Exits cleanly (exit 0) when no routes configured (XDNS mode), instead of fatal error
+
+### Changed
+- **telemt** updated to [3.3.23](https://github.com/telemt/telemt/releases/tag/3.3.23)
+- **XDNS/dnstt mutual exclusion** — Port 53 can only be used by one DNS tunnel at a time; `moav doctor` and `moav start` warn about conflicts
+- **ENABLE_XDNS defaults to false** — opt-in to avoid port 53 conflict with existing dnstt/Slipstream setups
 
 ## [1.6.2] - 2026-03-17
 
@@ -839,7 +862,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uTLS fingerprint spoofing (Chrome)
 - Automatic short ID generation for Reality
 
-[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/shayanb/MoaV/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/shayanb/MoaV/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/shayanb/MoaV/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/shayanb/MoaV/compare/v1.5.1...v1.6.0

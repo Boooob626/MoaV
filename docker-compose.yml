@@ -261,7 +261,7 @@ services:
       context: .
       dockerfile: dockerfiles/Dockerfile.telemt
       args:
-        TELEMT_VERSION: ${TELEMT_VERSION:-3.3.20}
+        TELEMT_VERSION: ${TELEMT_VERSION:-3.3.23}
     container_name: moav-telemt
     restart: unless-stopped
     networks:
