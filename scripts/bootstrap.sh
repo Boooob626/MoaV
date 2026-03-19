@@ -752,6 +752,14 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# Fix permissions on generated configs (admin container runs as non-root uid 1000)
+# -----------------------------------------------------------------------------
+chown -R 0:1000 /configs/ 2>/dev/null || true
+chmod -R g+r /configs/ 2>/dev/null || true
+chown -R 0:1000 /outputs/ 2>/dev/null || true
+chmod -R g+r /outputs/ 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
 # Mark as bootstrapped
 # -----------------------------------------------------------------------------
 date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE_DIR/.bootstrapped"
