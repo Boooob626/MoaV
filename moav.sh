@@ -1732,6 +1732,107 @@ cmd_setup_dns() {
     setup_dns_for_dnstt
 }
 
+generate_dns_zone_file() {
+    local env_file="$SCRIPT_DIR/.env"
+    local domain
+    domain=$(get_env_val "DOMAIN" "$env_file" "")
+    local server_ip
+    server_ip=$(get_env_val "SERVER_IP" "$env_file" "")
+    local output_file="$SCRIPT_DIR/outputs/dns-records.txt"
+
+    if [[ -z "$domain" ]]; then
+        warn "DOMAIN not set in .env — cannot generate zone file"
+        return 1
+    fi
+    if [[ -z "$server_ip" ]]; then
+        warn "SERVER_IP not set in .env — cannot generate zone file"
+        return 1
+    fi
+
+    mkdir -p "$SCRIPT_DIR/outputs"
+
+    cat > "$output_file" << ZONEOF
+;;
+;; MoaV DNS Records for ${domain}
+;; Generated: $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC)
+;;
+;; Import into Cloudflare: DNS > Records > Import and Upload
+;; Or manually create these records at your DNS provider.
+;;
+
+;; Main domain — points to your server (DNS only, NOT proxied)
+${domain}.	1	IN	A	${server_ip}
+ZONEOF
+
+    # DNS tunnel nameserver (needed for dnstt/Slipstream/XDNS)
+    local dnstt_enabled slipstream_enabled xdns_enabled
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+    slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
+    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "false")
+
+    if [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" || "$xdns_enabled" == "true" ]]; then
+        cat >> "$output_file" << ZONEOF
+
+;; DNS tunnel nameserver — required for NS delegation
+dns.${domain}.	1	IN	A	${server_ip}
+ZONEOF
+    fi
+
+    if [[ "$dnstt_enabled" == "true" ]]; then
+        local dnstt_sub
+        dnstt_sub=$(get_env_val "DNSTT_SUBDOMAIN" "$env_file" "t")
+        cat >> "$output_file" << ZONEOF
+
+;; dnstt DNS tunnel
+${dnstt_sub}.${domain}.	1	IN	NS	dns.${domain}.
+ZONEOF
+    fi
+
+    if [[ "$slipstream_enabled" == "true" ]]; then
+        local slip_sub
+        slip_sub=$(get_env_val "SLIPSTREAM_SUBDOMAIN" "$env_file" "s")
+        cat >> "$output_file" << ZONEOF
+
+;; Slipstream QUIC-over-DNS tunnel
+${slip_sub}.${domain}.	1	IN	NS	dns.${domain}.
+ZONEOF
+    fi
+
+    if [[ "$xdns_enabled" == "true" ]]; then
+        local xdns_sub
+        xdns_sub=$(get_env_val "XDNS_SUBDOMAIN" "$env_file" "x")
+        cat >> "$output_file" << ZONEOF
+
+;; XDNS mKCP DNS tunnel
+${xdns_sub}.${domain}.	1	IN	NS	dns.${domain}.
+ZONEOF
+    fi
+
+    # CDN subdomain
+    local cdn_sub
+    cdn_sub=$(get_env_val "CDN_SUBDOMAIN" "$env_file" "")
+    if [[ -n "$cdn_sub" ]]; then
+        cat >> "$output_file" << ZONEOF
+
+;; CDN mode (Cloudflare proxied — orange cloud)
+${cdn_sub}.${domain}.	1	IN	A	${server_ip}
+ZONEOF
+    fi
+
+    # Grafana CDN subdomain
+    local grafana_sub
+    grafana_sub=$(get_env_val "GRAFANA_SUBDOMAIN" "$env_file" "")
+    if [[ -n "$grafana_sub" ]]; then
+        cat >> "$output_file" << ZONEOF
+
+;; Grafana CDN (Cloudflare proxied — orange cloud)
+${grafana_sub}.${domain}.	1	IN	A	${server_ip}
+ZONEOF
+    fi
+
+    echo "$output_file"
+}
+
 # =============================================================================
 # Doctor (Diagnostics)
 # =============================================================================
@@ -2221,8 +2322,25 @@ doctor_check_dns() {
     if [[ $failures -gt 0 ]]; then
         echo ""
         echo "See docs/DNS.md for record templates and provider-specific examples."
+        # Generate zone file for easy import
+        local zone_file
+        zone_file=$(generate_dns_zone_file 2>/dev/null)
+        if [[ -n "$zone_file" ]] && [[ -f "$zone_file" ]]; then
+            echo ""
+            success "DNS zone file saved to: $zone_file"
+            echo -e "  ${DIM}Import into Cloudflare: DNS > Records > Import and Upload${NC}"
+            echo ""
+            if confirm "Show zone file contents?" "y"; then
+                echo ""
+                cat "$zone_file"
+                echo ""
+            fi
+        fi
         return 1
     fi
+
+    # Generate zone file even on success (for reference)
+    generate_dns_zone_file >/dev/null 2>&1
 
     return 0
 }
