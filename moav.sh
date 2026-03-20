@@ -1770,43 +1770,30 @@ ZONEOF
     slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
     xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "false")
 
-    if [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" || "$xdns_enabled" == "true" ]]; then
-        cat >> "$output_file" << ZONEOF
+    # Always include DNS tunnel records (user can decide which to enable later)
+    local dnstt_sub slip_sub xdns_sub
+    dnstt_sub=$(get_env_val "DNSTT_SUBDOMAIN" "$env_file" "t")
+    slip_sub=$(get_env_val "SLIPSTREAM_SUBDOMAIN" "$env_file" "s")
+    xdns_sub=$(get_env_val "XDNS_SUBDOMAIN" "$env_file" "x")
 
-;; DNS tunnel nameserver — required for NS delegation
+    local dnstt_status="enabled" slip_status="enabled" xdns_status="enabled"
+    [[ "$dnstt_enabled" != "true" ]] && dnstt_status="disabled"
+    [[ "$slipstream_enabled" != "true" ]] && slip_status="disabled"
+    [[ "$xdns_enabled" != "true" ]] && xdns_status="disabled"
+
+    cat >> "$output_file" << ZONEOF
+
+;; DNS tunnel nameserver — required for NS delegation (DNS only, NOT proxied)
 dns.${domain}.	1	IN	A	${server_ip}
-ZONEOF
-    fi
 
-    if [[ "$dnstt_enabled" == "true" ]]; then
-        local dnstt_sub
-        dnstt_sub=$(get_env_val "DNSTT_SUBDOMAIN" "$env_file" "t")
-        cat >> "$output_file" << ZONEOF
-
-;; dnstt DNS tunnel
+;; DNS tunnel NS delegations (dnstt and XDNS use port 53 — enable one group at a time)
+;; dnstt DNS tunnel (currently ${dnstt_status})
 ${dnstt_sub}.${domain}.	1	IN	NS	dns.${domain}.
-ZONEOF
-    fi
-
-    if [[ "$slipstream_enabled" == "true" ]]; then
-        local slip_sub
-        slip_sub=$(get_env_val "SLIPSTREAM_SUBDOMAIN" "$env_file" "s")
-        cat >> "$output_file" << ZONEOF
-
-;; Slipstream QUIC-over-DNS tunnel
+;; Slipstream QUIC-over-DNS tunnel (currently ${slip_status})
 ${slip_sub}.${domain}.	1	IN	NS	dns.${domain}.
-ZONEOF
-    fi
-
-    if [[ "$xdns_enabled" == "true" ]]; then
-        local xdns_sub
-        xdns_sub=$(get_env_val "XDNS_SUBDOMAIN" "$env_file" "x")
-        cat >> "$output_file" << ZONEOF
-
-;; XDNS mKCP DNS tunnel
+;; XDNS mKCP DNS tunnel (currently ${xdns_status})
 ${xdns_sub}.${domain}.	1	IN	NS	dns.${domain}.
 ZONEOF
-    fi
 
     # CDN subdomain
     local cdn_sub
