@@ -398,8 +398,12 @@ services:
       - "9090"
     cap_drop:
       - ALL
-    security_opt:
-      - no-new-privileges:true
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,size=10m
@@ -773,6 +777,11 @@ services:
       - moav_certs:/certs:ro
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
     read_only: true
