@@ -1108,14 +1108,9 @@ services:
       - CDN_TRANSPORT=${CDN_TRANSPORT:-httpupgrade}
       - CDN_SNI=${CDN_SNI:-}
       - CDN_ADDRESS=${CDN_ADDRESS:-}
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,size=10m
-    mem_limit: 256m
+    # Note: bootstrap needs full write access to volumes, configs, and outputs
+    # Security hardening not applied — runs once during setup, not as a persistent service
+    mem_limit: 512m
     cpus: 1.0
     profiles:
       - setup

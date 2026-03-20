@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ENABLE_XDNS default** — Changed from `true` to `false` in bootstrap to match `.env.example`
 
 ### Changed
+- **Docker Compose security hardening** (PR [#81](https://github.com/shayanb/MoaV/pull/81)) — `cap_drop: ALL` with selective `cap_add`, `read_only: true`, `no-new-privileges`, resource limits per service; removed `privileged: true` from WireGuard/AmneziaWG; `gosu` → `setpriv` for capability retention through user switch
 - **GitHub release action** — Title format changed from "MoaV vX.Y.Z" to "vX.Y.Z"; documentation links updated to moav.sh/docs
 
 ## [1.7.0] - 2026-03-19
