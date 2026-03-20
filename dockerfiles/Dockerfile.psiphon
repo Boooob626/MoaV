@@ -8,7 +8,6 @@ ARG CONDUIT_VERSION=2.0.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
-    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r moav && useradd -r -g moav moav

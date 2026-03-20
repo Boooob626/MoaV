@@ -76,7 +76,10 @@ chown -R moav:moav "$RUNTIME_DIR"
 
 # Start TrustTunnel endpoint as non-root
 cd /opt/trusttunnel
-exec gosu moav ./trusttunnel_endpoint \
+exec setpriv --reuid=moav --regid=moav --init-groups \
+    --inh-caps=+net_admin,+net_bind_service \
+    --ambient-caps=+net_admin,+net_bind_service \
+    ./trusttunnel_endpoint \
     --loglvl "$LOG_LEVEL" \
     "$RUNTIME_DIR/vpn.toml" \
     "$RUNTIME_DIR/hosts.toml"

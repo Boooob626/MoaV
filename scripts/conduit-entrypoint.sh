@@ -71,7 +71,7 @@ chown -R moav:moav "$CONDUIT_DATA_DIR" 2>/dev/null || true
 
 # Run conduit as non-root in foreground
 # Strip application timestamps (Docker already adds them)
-gosu moav /app/conduit start \
+setpriv --reuid=moav --regid=moav --init-groups /app/conduit start \
     -d "$CONDUIT_DATA_DIR" \
     -b "$CONDUIT_BANDWIDTH" \
     -m "$CONDUIT_MAX_COMMON_CLIENTS" \
