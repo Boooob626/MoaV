@@ -601,8 +601,8 @@ fi
 TEMPLATE_FILE="/docs/client-guide-template.html"
 OUTPUT_HTML="$OUTPUT_DIR/README.html"
 
-# Only regenerate README.html if bundle changed or it doesn't exist
-if [[ -f "$OUTPUT_HTML" ]] && [[ "$BUNDLE_CHANGED" == "false" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
+# Regenerate README.html if: bundle changed, doesn't exist, or template is newer
+if [[ -f "$OUTPUT_HTML" ]] && [[ "$BUNDLE_CHANGED" == "false" ]] && [[ "$FORCE_REGENERATE" != "force" ]] && [[ ! "$TEMPLATE_FILE" -nt "$OUTPUT_HTML" ]]; then
     log_info "  - README.html exists and no new configs, skipping"
 elif [[ -f "$TEMPLATE_FILE" ]]; then
     # Read config values
