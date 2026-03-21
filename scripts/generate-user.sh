@@ -547,7 +547,7 @@ fi
 # Generate XDNS client configs (if enabled)
 # -----------------------------------------------------------------------------
 if [[ "${ENABLE_XDNS:-false}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
-    if [[ -f "$OUTPUT_DIR/xdns-config.json" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
+    if [[ -f "$OUTPUT_DIR/xdns-config.json" ]] && [[ -f "$OUTPUT_DIR/xdns-direct-config.json" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
         log_info "  - XDNS config exists, skipping"
     else
         BUNDLE_CHANGED=true
@@ -783,16 +783,23 @@ with open(filepath, 'w') as f:
     fi
 
     # XDNS config (multiline JSON — use file-based replacement to avoid shell escaping issues)
-    if [[ -n "${CONFIG_XDNS:-}" ]]; then
+    if [[ -f "$OUTPUT_DIR/xdns-config.json" ]]; then
         python3 -c "
-import sys
-with open(sys.argv[1], 'r') as f: html = f.read()
-with open(sys.argv[2], 'r') as f: dns_cfg = f.read().strip()
-with open(sys.argv[3], 'r') as f: direct_cfg = f.read().strip()
+import sys, os
+html_path = sys.argv[1]
+dns_path = sys.argv[2]
+direct_path = sys.argv[3]
+with open(html_path, 'r') as f: html = f.read()
+try:
+    with open(dns_path, 'r') as f: dns_cfg = f.read().strip()
+except: dns_cfg = 'XDNS config not available'
+try:
+    with open(direct_path, 'r') as f: direct_cfg = f.read().strip()
+except: direct_cfg = 'XDNS direct config not available'
 html = html.replace('{{CONFIG_XDNS}}', dns_cfg)
 html = html.replace('{{CONFIG_XDNS_DIRECT}}', direct_cfg)
 html = html.replace('{{XDNS_DISPLAY}}', '')
-with open(sys.argv[1], 'w') as f: f.write(html)
+with open(html_path, 'w') as f: f.write(html)
 " "$OUTPUT_HTML" "$OUTPUT_DIR/xdns-config.json" "$OUTPUT_DIR/xdns-direct-config.json"
     else
         replace_placeholder "{{CONFIG_XDNS}}" "XDNS not enabled"
