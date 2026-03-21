@@ -717,6 +717,31 @@ with open(filepath, 'w') as f:
         replace_placeholder "{{CONFIG_XHTTP}}" "XHTTP not enabled"
     fi
 
+    # XDNS configs (multiline JSON — use file-based replacement)
+    if [[ -f "$OUTPUT_DIR/xdns-config.json" ]]; then
+        python3 -c "
+import sys
+html_path = sys.argv[1]
+dns_path = sys.argv[2]
+direct_path = sys.argv[3]
+with open(html_path, 'r') as f: html = f.read()
+try:
+    with open(dns_path, 'r') as f: dns_cfg = f.read().strip()
+except: dns_cfg = 'XDNS config not available'
+try:
+    with open(direct_path, 'r') as f: direct_cfg = f.read().strip()
+except: direct_cfg = 'XDNS direct config not available'
+html = html.replace('{{CONFIG_XDNS}}', dns_cfg)
+html = html.replace('{{CONFIG_XDNS_DIRECT}}', direct_cfg)
+html = html.replace('{{XDNS_DISPLAY}}', '')
+with open(html_path, 'w') as f: f.write(html)
+" "$OUTPUT_HTML" "$OUTPUT_DIR/xdns-config.json" "$OUTPUT_DIR/xdns-direct-config.json"
+    else
+        replace_placeholder "{{CONFIG_XDNS}}" "XDNS not enabled"
+        replace_placeholder "{{CONFIG_XDNS_DIRECT}}" "XDNS not enabled"
+        replace_placeholder "{{XDNS_DISPLAY}}" "display:none"
+    fi
+
     # Clean up backup files
     rm -f "$OUTPUT_HTML.bak"
 
