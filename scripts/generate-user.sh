@@ -782,11 +782,18 @@ with open(filepath, 'w') as f:
         replace_placeholder "{{CONFIG_SLIPSTREAM}}" "Slipstream not enabled"
     fi
 
-    # XDNS config (multiline JSON)
+    # XDNS config (multiline JSON — use file-based replacement to avoid shell escaping issues)
     if [[ -n "${CONFIG_XDNS:-}" ]]; then
-        replace_placeholder "{{CONFIG_XDNS}}" "$CONFIG_XDNS"
-        replace_placeholder "{{CONFIG_XDNS_DIRECT}}" "${CONFIG_XDNS_DIRECT:-XDNS direct config not available}"
-        replace_placeholder "{{XDNS_DISPLAY}}" ""
+        python3 -c "
+import sys
+with open(sys.argv[1], 'r') as f: html = f.read()
+with open(sys.argv[2], 'r') as f: dns_cfg = f.read().strip()
+with open(sys.argv[3], 'r') as f: direct_cfg = f.read().strip()
+html = html.replace('{{CONFIG_XDNS}}', dns_cfg)
+html = html.replace('{{CONFIG_XDNS_DIRECT}}', direct_cfg)
+html = html.replace('{{XDNS_DISPLAY}}', '')
+with open(sys.argv[1], 'w') as f: f.write(html)
+" "$OUTPUT_HTML" "$OUTPUT_DIR/xdns-config.json" "$OUTPUT_DIR/xdns-direct-config.json"
     else
         replace_placeholder "{{CONFIG_XDNS}}" "XDNS not enabled"
         replace_placeholder "{{CONFIG_XDNS_DIRECT}}" "XDNS not enabled"
