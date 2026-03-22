@@ -25,7 +25,8 @@ else
     echo "[admin] SSL: Disabled (no certificates found)"
 fi
 
-# Fix ownership of writable mounts (may be root-owned from previous runs)
+# Ensure required directories exist and fix ownership (may be root-owned from Docker)
+mkdir -p /project/outputs/bundles /project/state/users /project/configs/amneziawg /project/configs/wireguard 2>/dev/null || true
 chown -R moav:moav /project/outputs /project/configs /project/state 2>/dev/null || true
 
 # Run the dashboard as non-root

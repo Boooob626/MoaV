@@ -418,7 +418,7 @@ install_qrencode() {
 }
 
 # Read a value from .env file — handles duplicates (last wins), inline comments, and quotes
-# Usage: val=$(get_env_val "ENABLE_XHTTP" "$env_file" "false")
+# Usage: val=$(get_env_val "ENABLE_XHTTP" "$env_file" "true")
 get_env_val() {
     local key="$1" file="$2" default="${3:-}"
     local val
@@ -559,18 +559,19 @@ check_prerequisites() {
                     echo "  Add these DNS records in your DNS provider (e.g., Cloudflare):"
                     echo ""
                     echo -e "  ${WHITE}Required Records:${NC}"
-                    printf "  %-8s %-12s %-20s %s\n" "Type" "Name" "Value" "Proxy"
-                    printf "  %-8s %-12s %-20s %s\n" "────" "────" "─────" "────"
-                    printf "  %-8s %-12s %-20s %s\n" "A" "@" "$detected_ip" "DNS only (gray)"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "Type" "Name" "Value" "Proxy" "Used by"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "────" "────" "─────" "────" "───────"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "A" "@" "$detected_ip" "DNS only (gray)" "Reality, Trojan, Hysteria2, XHTTP, WG"
                     echo ""
-                    echo -e "  ${WHITE}For DNS Tunnels (dnstt + Slipstream):${NC}"
-                    printf "  %-8s %-12s %-20s %s\n" "A" "dns" "$detected_ip" "DNS only (gray)"
-                    printf "  %-8s %-12s %-20s %s\n" "NS" "t" "dns.$input_domain" "-"
-                    printf "  %-8s %-12s %-20s %s\n" "NS" "s" "dns.$input_domain" "-"
+                    echo -e "  ${WHITE}For DNS Tunnels (dnstt, Slipstream, XDNS):${NC}"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "A" "dns" "$detected_ip" "DNS only (gray)" "NS delegation target"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "NS" "t" "dns.$input_domain" "-" "dnstt"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "NS" "s" "dns.$input_domain" "-" "Slipstream"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "NS" "x" "dns.$input_domain" "-" "XDNS"
                     echo ""
                     echo -e "  ${WHITE}Optional - CDN Mode (Cloudflare proxied):${NC}"
-                    printf "  %-8s %-12s %-20s %s\n" "A" "cdn" "$detected_ip" "Proxied (orange)"
-                    printf "  %-8s %-12s %-20s %s\n" "A" "grafana" "$detected_ip" "Proxied (orange)"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "A" "cdn" "$detected_ip" "Proxied (orange)" "CDN VLESS"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "A" "grafana" "$detected_ip" "Proxied (orange)" "Grafana dashboard"
                     echo ""
                     echo -e "  ${YELLOW}⚠ CDN Mode requires an Origin Rule in Cloudflare:${NC}"
                     echo "    Rules → Origin Rules → Create rule"
@@ -578,6 +579,9 @@ check_prerequisites() {
                     echo "    • Action: Destination Port → Rewrite to 2082"
                     echo ""
                     echo -e "  See docs/DNS.md for detailed instructions."
+                    echo ""
+                    echo -e "  ${DIM}A BIND-format zone file is saved to outputs/dns-records.txt${NC}"
+                    echo -e "  ${DIM}Import it in Cloudflare: DNS > Records > Import and Upload${NC}"
                     echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
                     echo ""
 
@@ -1659,24 +1663,54 @@ run_bootstrap() {
 # =============================================================================
 
 check_dns_for_dnstunnel() {
-    # Check if dnstunnel is in selected profiles
+    # Check if any DNS tunnel protocol needs port 53
+    local needs_port53=false
+    local env_file="$SCRIPT_DIR/.env"
+
+    # Check if dnstunnel profile is selected AND dnstt/slipstream are enabled
     local has_dnstunnel=false
+    local has_xhttp=false
     for p in "${SELECTED_PROFILES[@]}"; do
         if [[ "$p" == "dnstunnel" || "$p" == "all" ]]; then
             has_dnstunnel=true
-            break
+        fi
+        if [[ "$p" == "xhttp" || "$p" == "all" ]]; then
+            has_xhttp=true
         fi
     done
 
-    if ! $has_dnstunnel; then
+    local dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
+    local slip_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
+    local xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "true")
+
+    # Check for port 53 conflict between XDNS and dnstt/Slipstream
+    if [[ "$xdns_enabled" == "true" ]] && [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
+        echo ""
+        warn "XDNS and dnstt/Slipstream both need port 53 — only one can be active."
+        echo "  XDNS is enabled by default (recommended). Disabling dnstt/Slipstream."
+        sed -i.bak "s/^ENABLE_DNSTT=.*/ENABLE_DNSTT=false/" "$env_file" && rm -f "$env_file.bak"
+        sed -i.bak "s/^ENABLE_SLIPSTREAM=.*/ENABLE_SLIPSTREAM=false/" "$env_file" && rm -f "$env_file.bak"
+        dnstt_enabled="false"
+        slip_enabled="false"
+    fi
+
+    # Determine if port 53 is needed
+    if $has_dnstunnel && [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
+        needs_port53=true
+    fi
+    if $has_xhttp && [[ "$xdns_enabled" == "true" ]]; then
+        needs_port53=true
+    fi
+
+    if ! $needs_port53; then
         return 0
     fi
 
-    # Check if port 53 is in use
+    # Check if port 53 is in use by systemd-resolved
     if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
         echo ""
         warn "Port 53 is in use (likely by systemd-resolved)"
-        echo "  DNS tunnels (dnstt/Slipstream) require port 53 to be free."
+        echo "  DNS tunnels (dnstt/Slipstream/XDNS) require port 53 to be free."
         echo ""
 
         if confirm "Disable systemd-resolved and configure direct DNS?" "y"; then
@@ -1720,7 +1754,7 @@ cmd_setup_dns() {
     info "This will:"
     echo "  • Stop and disable systemd-resolved"
     echo "  • Configure direct DNS resolution (1.1.1.1, 8.8.8.8)"
-    echo "  • Free port 53 for DNS tunnels (dnstt + Slipstream)"
+    echo "  • Free port 53 for DNS tunnels (XDNS, dnstt, Slipstream)"
     echo ""
 
     if ! confirm "Continue?" "y"; then
@@ -1730,6 +1764,94 @@ cmd_setup_dns() {
 
     echo ""
     setup_dns_for_dnstt
+}
+
+generate_dns_zone_file() {
+    local env_file="$SCRIPT_DIR/.env"
+    local domain
+    domain=$(get_env_val "DOMAIN" "$env_file" "")
+    local server_ip
+    server_ip=$(get_env_val "SERVER_IP" "$env_file" "")
+    local output_file="$SCRIPT_DIR/outputs/dns-records.txt"
+
+    if [[ -z "$domain" ]]; then
+        warn "DOMAIN not set in .env — cannot generate zone file"
+        return 1
+    fi
+    if [[ -z "$server_ip" ]]; then
+        warn "SERVER_IP not set in .env — cannot generate zone file"
+        return 1
+    fi
+
+    mkdir -p "$SCRIPT_DIR/outputs"
+
+    cat > "$output_file" << ZONEOF
+;;
+;; MoaV DNS Records for ${domain}
+;; Generated: $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC)
+;;
+;; Import into Cloudflare: DNS > Records > Import and Upload
+;; Or manually create these records at your DNS provider.
+;;
+
+;; Main domain — points to your server (DNS only, NOT proxied)
+${domain}.	1	IN	A	${server_ip}
+ZONEOF
+
+    # DNS tunnel nameserver (needed for dnstt/Slipstream/XDNS)
+    local dnstt_enabled slipstream_enabled xdns_enabled
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
+    slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
+    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "true")
+
+    # Always include DNS tunnel records (user can decide which to enable later)
+    local dnstt_sub slip_sub xdns_sub
+    dnstt_sub=$(get_env_val "DNSTT_SUBDOMAIN" "$env_file" "t")
+    slip_sub=$(get_env_val "SLIPSTREAM_SUBDOMAIN" "$env_file" "s")
+    xdns_sub=$(get_env_val "XDNS_SUBDOMAIN" "$env_file" "x")
+
+    local dnstt_status="enabled" slip_status="enabled" xdns_status="enabled"
+    [[ "$dnstt_enabled" != "true" ]] && dnstt_status="disabled"
+    [[ "$slipstream_enabled" != "true" ]] && slip_status="disabled"
+    [[ "$xdns_enabled" != "true" ]] && xdns_status="disabled"
+
+    cat >> "$output_file" << ZONEOF
+
+;; DNS tunnel nameserver — required for NS delegation (DNS only, NOT proxied)
+dns.${domain}.	1	IN	A	${server_ip}
+
+;; DNS tunnel NS delegations (dnstt and XDNS use port 53 — enable one group at a time)
+;; dnstt DNS tunnel (currently ${dnstt_status})
+${dnstt_sub}.${domain}.	1	IN	NS	dns.${domain}.
+;; Slipstream QUIC-over-DNS tunnel (currently ${slip_status})
+${slip_sub}.${domain}.	1	IN	NS	dns.${domain}.
+;; XDNS mKCP DNS tunnel (currently ${xdns_status})
+${xdns_sub}.${domain}.	1	IN	NS	dns.${domain}.
+ZONEOF
+
+    # CDN subdomain
+    local cdn_sub
+    cdn_sub=$(get_env_val "CDN_SUBDOMAIN" "$env_file" "")
+    if [[ -n "$cdn_sub" ]]; then
+        cat >> "$output_file" << ZONEOF
+
+;; CDN mode (Cloudflare proxied — orange cloud)
+${cdn_sub}.${domain}.	1	IN	A	${server_ip}
+ZONEOF
+    fi
+
+    # Grafana CDN subdomain
+    local grafana_sub
+    grafana_sub=$(get_env_val "GRAFANA_SUBDOMAIN" "$env_file" "")
+    if [[ -n "$grafana_sub" ]]; then
+        cat >> "$output_file" << ZONEOF
+
+;; Grafana CDN (Cloudflare proxied — orange cloud)
+${grafana_sub}.${domain}.	1	IN	A	${server_ip}
+ZONEOF
+    fi
+
+    echo "$output_file"
 }
 
 # =============================================================================
@@ -2153,10 +2275,10 @@ doctor_check_dns() {
         fi
     fi
 
-    if doctor_is_enabled "$(get_env_val "ENABLE_DNSTT" "$env_file" "true")"; then
+    if doctor_is_enabled "$(get_env_val "ENABLE_DNSTT" "$env_file" "false")"; then
         dnstt_enabled=true
     fi
-    if doctor_is_enabled "$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "true")"; then
+    if doctor_is_enabled "$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")"; then
         slipstream_enabled=true
     fi
 
@@ -2221,8 +2343,25 @@ doctor_check_dns() {
     if [[ $failures -gt 0 ]]; then
         echo ""
         echo "See docs/DNS.md for record templates and provider-specific examples."
+        # Generate zone file for easy import
+        local zone_file
+        zone_file=$(generate_dns_zone_file 2>/dev/null)
+        if [[ -n "$zone_file" ]] && [[ -f "$zone_file" ]]; then
+            echo ""
+            success "DNS zone file saved to: $zone_file"
+            echo -e "  ${DIM}Import into Cloudflare: DNS > Records > Import and Upload${NC}"
+            echo ""
+            if confirm "Show zone file contents?" "y"; then
+                echo ""
+                cat "$zone_file"
+                echo ""
+            fi
+        fi
         return 1
     fi
+
+    # Generate zone file even on success (for reference)
+    generate_dns_zone_file >/dev/null 2>&1
 
     return 0
 }
@@ -2347,12 +2486,12 @@ doctor_check_ports() {
 
     # Check for systemd-resolved on port 53 (if dnstt enabled)
     local dnstt_enabled
-    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
     local slip_enabled
     slip_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
 
     local xdns_enabled
-    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "false")
+    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "true")
 
     # Check XDNS vs dnstt/slipstream port 53 conflict
     if [[ "$xdns_enabled" == "true" ]] && [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
@@ -2632,7 +2771,7 @@ show_status() {
         local enable_trojan=$(get_env_val "ENABLE_TROJAN" "$env_file" "true")
         local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" "$env_file" "true")
         local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" "$env_file" "true")
-        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
         local enable_admin=$(get_env_val "ENABLE_ADMIN_UI" "$env_file" "true")
 
         # Mark services as disabled based on ENABLE_* settings
@@ -2835,12 +2974,12 @@ select_profiles() {
         local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" "$env_file" "true")
         local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" "$env_file" "true")
         local enable_amneziawg=$(get_env_val "ENABLE_AMNEZIAWG" "$env_file" "true")
-        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
         local enable_slipstream=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
         local enable_trusttunnel=$(get_env_val "ENABLE_TRUSTTUNNEL" "$env_file" "true")
         local enable_telemt=$(get_env_val "ENABLE_TELEMT" "$env_file" "true")
         local enable_admin=$(get_env_val "ENABLE_ADMIN_UI" "$env_file" "true")
-        local enable_xhttp=$(get_env_val "ENABLE_XHTTP" "$env_file" "false")
+        local enable_xhttp=$(get_env_val "ENABLE_XHTTP" "$env_file" "true")
 
         # proxy is disabled if all three protocols are disabled
         if [[ "$enable_reality" != "true" ]] && [[ "$enable_trojan" != "true" ]] && [[ "$enable_hysteria2" != "true" ]]; then
@@ -2953,12 +3092,12 @@ select_profiles() {
         local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" "$env_file" "true")
         local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" "$env_file" "true")
         local enable_amneziawg=$(get_env_val "ENABLE_AMNEZIAWG" "$env_file" "true")
-        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
         local enable_slipstream=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
         local enable_trusttunnel=$(get_env_val "ENABLE_TRUSTTUNNEL" "$env_file" "true")
         local enable_telemt=$(get_env_val "ENABLE_TELEMT" "$env_file" "true")
         local enable_admin=$(get_env_val "ENABLE_ADMIN_UI" "$env_file" "true")
-        local enable_xhttp=$(get_env_val "ENABLE_XHTTP" "$env_file" "false")
+        local enable_xhttp=$(get_env_val "ENABLE_XHTTP" "$env_file" "true")
 
         # Build profiles list based on enabled services
         SELECTED_PROFILES=()
@@ -3855,79 +3994,59 @@ show_usage() {
     echo ""
     echo "Usage: moav [command] [options]"
     echo ""
-    echo "Commands:"
-    echo "  (no command)          Interactive menu"
-    echo "  help, --help, -h      Show this help message"
-    echo "  version, --version    Show version information"
+    echo "Setup & Maintenance:"
     echo "  install               Install 'moav' command globally"
-    echo "  uninstall [--wipe]    Remove containers and global command (--wipe removes all data)"
-    echo "  update [-b BRANCH]    Update MoaV (git pull), optionally switch branch"
+    echo "  uninstall [--wipe]    Remove containers and command (--wipe removes all data)"
+    echo "  update [-b BRANCH]    Update MoaV (git pull + rebuild)"
+    echo "  bootstrap             First-time setup (keys, configs, service selection)"
+    echo "  domainless            Enable domainless mode"
     echo "  check                 Run prerequisites check"
-    echo "  doctor [CHECK]        Run diagnostics (e.g. 'doctor dns')"
-    echo "  bootstrap             Run first-time setup (includes service selection)"
-    echo "  domainless            Enable domainless mode (WireGuard, AmneziaWG, Telegram MTProxy, etc.)"
-    echo "  profiles              Change default services for 'moav start'"
-    echo "  start [PROFILE...]    Start services (uses DEFAULT_PROFILES from .env)"
-    echo "  stop [SERVICE...] [-r] Stop services (default: all, -r removes containers)"
-    echo "  restart [SERVICE...]  Restart services (default: all)"
-    echo "  status                Show service status"
-    echo "  logs [SERVICE...] [-n] View logs (default: all, follow mode, -n for no-follow)"
-    echo "  users                 List all users"
-    echo "  user list             List all users"
-    echo "  user add NAME [NAME2...] [-p]  Add user(s) (--package creates zip)"
-    echo "  user add --batch N [--prefix P]  Create N users (e.g., user01, user02...)"
-    echo "  admin password        Reset admin dashboard password"
-    echo "  donate                Donate VPN configs to help bypass censorship"
-    echo "  user revoke NAME      Revoke a user"
-    echo "  user package NAME     Create distributable zip for existing user"
-    echo "  build [SERVICE|PROFILE] [--no-cache]  Build services or profile"
-    echo "  build --local [SERVICE|all]          Build images locally (for blocked registries)"
-    echo "  test USERNAME         Test connectivity for a user"
-    echo "  client                Client mode (test/connect)"
+    echo "  doctor [CHECK]        Run diagnostics (e.g. 'doctor dns', 'doctor ports')"
     echo ""
-    echo "Migration:"
-    echo "  export [FILE]         Export full config backup (keys, users, .env)"
-    echo "  import FILE           Import config backup from file"
+    echo "Services:"
+    echo "  start [PROFILE...]    Start services (default: saved profiles from .env)"
+    echo "  stop [SERVICE...] [-r] Stop services (-r removes containers)"
+    echo "  restart [SERVICE...]  Restart services"
+    echo "  status                Show service status"
+    echo "  logs [SERVICE...] [-n] View logs (follow mode, -n for snapshot)"
+    echo "  profiles              Change default services for 'moav start'"
+    echo "  build [SVC|PROFILE] [--no-cache]  Build services or profile"
+    echo "  build --local [SVC|all]            Build locally (for blocked registries)"
+    echo ""
+    echo "Users:"
+    echo "  users / user list     List all users"
+    echo "  user add NAME [...] [-p]           Add user(s) (--package creates zip)"
+    echo "  user add --batch N [--prefix P]    Batch create (user01, user02...)"
+    echo "  user revoke NAME      Revoke a user"
+    echo "  user package NAME     Create zip bundle for existing user"
+    echo "  admin password        Reset admin dashboard password"
+    echo ""
+    echo "Donate & Test:"
+    echo "  donate                Donate VPN configs to MahsaNet/Psiphon/Snowflake"
+    echo "  test USERNAME [-v]    Test connectivity for a user"
+    echo "  client connect USER   Client mode (connect as user, exposes local proxy)"
+    echo ""
+    echo "Backup & Migration:"
+    echo "  export [FILE]         Export config backup (keys, users, .env)"
+    echo "  import FILE           Import config backup"
     echo "  migrate-ip NEW_IP     Update SERVER_IP and regenerate all configs"
     echo "  regenerate-users      Regenerate all user bundles with current .env"
     echo "  setup-dns             Free port 53 for DNS tunnels (disables systemd-resolved)"
     echo ""
-    echo "Profiles: proxy, wireguard, amneziawg, dnstunnel, trusttunnel, xhttp, telegram, admin, conduit, snowflake, client, all"
-    echo "Services: sing-box, decoy, wstunnel, wireguard, amneziawg, dns-router, dnstt, slipstream, trusttunnel, telemt, admin, psiphon-conduit, snowflake"
-    echo "Aliases:  proxy/singbox/reality→sing-box, wg→wireguard, awg→amneziawg, dns/dnstt/slip→dnstunnel, tg/mtproxy→telegram, conduit→psiphon-conduit"
+    echo "Profiles: proxy, wireguard, amneziawg, dnstunnel, trusttunnel, xhttp, telegram,"
+    echo "          admin, conduit, snowflake, monitoring, client, all"
+    echo "Aliases:  wg→wireguard, awg→amneziawg, tg→telegram, conduit→psiphon-conduit"
     echo ""
     echo "Examples:"
-    echo "  moav                           # Interactive menu"
-    echo "  moav install                   # Install globally (run from anywhere)"
-    echo "  moav update                    # Update MoaV (git pull)"
-    echo "  moav update -b dev             # Switch to dev branch and update"
-    echo "  moav doctor                    # Run all diagnostics"
-    echo "  moav doctor dns                # Run only the DNS diagnostic"
-    echo "  moav start                     # Start all services"
-    echo "  moav start proxy admin         # Start proxy and admin profiles"
-    echo "  moav stop conduit              # Stop specific service"
-    echo "  moav logs sing-box             # Follow sing-box logs (Ctrl+C to exit)"
-    echo "  moav logs -n                   # Show last 100 lines without following"
-    echo "  moav build conduit --no-cache  # Rebuild service without cache"
-    echo "  moav build monitoring          # Build all services in monitoring profile"
-    echo "  moav build --local             # Build blocked images (cadvisor, clash-exporter)"
-    echo "  moav build --local prometheus  # Build specific external image locally"
-    echo "  moav build --local all         # Build EVERYTHING locally (no registry pulls)"
-    echo "  moav profiles                  # Change default services"
-    echo "  moav user add john             # Add user 'john'"
-    echo "  moav user add john --package   # Add user and create zip bundle"
-    echo "  moav user add alice bob charlie  # Add multiple users"
-    echo "  moav user add --batch 5        # Create user01..user05"
-    echo "  moav user add --batch 10 --prefix team -p  # Create team01..team10 with packages"
-    echo "  moav test joe                  # Test connectivity for user joe"
-    echo "  moav test joe -v               # Test with verbose output for debugging"
-    echo "  moav client connect joe        # Connect as user joe (exposes proxy)"
-    echo "  moav donate                    # Donate configs to MahsaServer.com"
-    echo ""
-    echo "Migration:"
-    echo "  moav export                    # Backup to moav-backup-TIMESTAMP.tar.gz"
-    echo "  moav import backup.tar.gz     # Restore from backup"
-    echo "  moav migrate-ip 1.2.3.4       # Update configs to new server IP"
+    echo "  moav                                 # Interactive menu"
+    echo "  moav start                           # Start default services"
+    echo "  moav start proxy admin               # Start specific profiles"
+    echo "  moav user add alice bob --package     # Add users with zip bundles"
+    echo "  moav user add --batch 10 --prefix vip # Batch create vip01..vip10"
+    echo "  moav donate                          # Donate configs to MahsaNet"
+    echo "  moav doctor dns                      # Check DNS configuration"
+    echo "  moav export                          # Backup to moav-backup-TIMESTAMP.tar.gz"
+    echo "  moav migrate-ip 1.2.3.4              # Update to new server IP"
 }
 
 cmd_check() {
@@ -5275,11 +5394,11 @@ cmd_start() {
 
     # Check port 53 conflicts for DNS tunnels
     local dnstt_enabled
-    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "true")
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "false")
     local slipstream_enabled
     slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "false")
     local xdns_start_enabled
-    xdns_start_enabled=$(get_env_val "ENABLE_XDNS" "false")
+    xdns_start_enabled=$(get_env_val "ENABLE_XDNS" "true")
 
     # Warn if both XDNS and dnstt/Slipstream are enabled (port 53 conflict)
     if [[ "$xdns_start_enabled" == "true" ]] && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
@@ -5289,11 +5408,20 @@ cmd_start() {
         echo ""
     fi
 
-    if echo "$profiles" | grep -qE "dnstunnel|all" && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]] && [[ "$xdns_start_enabled" != "true" ]]; then
+    # Check if any DNS tunnel needs port 53
+    local needs_port53=false
+    if echo "$profiles" | grep -qE "dnstunnel|all" && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
+        needs_port53=true
+    fi
+    if echo "$profiles" | grep -qE "xhttp|all" && [[ "$xdns_start_enabled" == "true" ]]; then
+        needs_port53=true
+    fi
+
+    if $needs_port53; then
         if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
             echo ""
             warn "Port 53 is in use (likely by systemd-resolved)"
-            echo "  DNS tunnels (dnstt/Slipstream) require port 53 to be free."
+            echo "  DNS tunnels (dnstt/Slipstream/XDNS) require port 53 to be free."
             echo ""
             if confirm "Disable systemd-resolved and configure direct DNS?" "y"; then
                 setup_dns_for_dnstt
@@ -5792,7 +5920,7 @@ cmd_build() {
                 local compose_services=()
                 local local_services=()
                 for svc in $services; do
-                    if [[ -n "${LOCAL_BUILD_MAP[$svc]:-}" ]]; then
+                    if _local_build_info "$svc" >/dev/null 2>&1; then
                         local_services+=("$svc")
                     else
                         compose_services+=("$svc")
@@ -5822,15 +5950,20 @@ cmd_build() {
 
 # Map of services that can be built locally
 # Format: "dockerfile|image_tag|image_env_var|version_env_var|version_arg|description"
-declare -A LOCAL_BUILD_MAP=(
-    ["cadvisor"]="dockerfiles/Dockerfile.cadvisor|moav-cadvisor:local|IMAGE_CADVISOR|CADVISOR_VERSION|CADVISOR_VERSION|cAdvisor container metrics (gcr.io)"
-    ["clash-exporter"]="dockerfiles/Dockerfile.clash-exporter|moav-clash-exporter:local|IMAGE_CLASH_EXPORTER|CLASH_EXPORTER_VERSION|CLASH_EXPORTER_VERSION|Clash API exporter (ghcr.io)"
-    ["prometheus"]="dockerfiles/Dockerfile.prometheus|moav-prometheus:local|IMAGE_PROMETHEUS|PROMETHEUS_VERSION|PROMETHEUS_VERSION|Prometheus time-series DB"
-    ["grafana"]="dockerfiles/Dockerfile.grafana|moav-grafana:local|IMAGE_GRAFANA|GRAFANA_VERSION|GRAFANA_VERSION|Grafana dashboards"
-    ["node-exporter"]="dockerfiles/Dockerfile.node-exporter|moav-node-exporter:local|IMAGE_NODE_EXPORTER|NODE_EXPORTER_VERSION|NODE_EXPORTER_VERSION|Node system metrics"
-    ["nginx"]="dockerfiles/Dockerfile.nginx|moav-nginx:local|IMAGE_NGINX||NGINX_VERSION|Nginx web server"
-    ["certbot"]="dockerfiles/Dockerfile.certbot|moav-certbot:local|IMAGE_CERTBOT||CERTBOT_VERSION|Let's Encrypt client"
-)
+ALL_LOCAL_BUILD_SERVICES="cadvisor clash-exporter prometheus grafana node-exporter nginx certbot"
+
+_local_build_info() {
+    case "$1" in
+        cadvisor)       echo "dockerfiles/Dockerfile.cadvisor|moav-cadvisor:local|IMAGE_CADVISOR|CADVISOR_VERSION|CADVISOR_VERSION|cAdvisor container metrics (gcr.io)" ;;
+        clash-exporter) echo "dockerfiles/Dockerfile.clash-exporter|moav-clash-exporter:local|IMAGE_CLASH_EXPORTER|CLASH_EXPORTER_VERSION|CLASH_EXPORTER_VERSION|Clash API exporter (ghcr.io)" ;;
+        prometheus)     echo "dockerfiles/Dockerfile.prometheus|moav-prometheus:local|IMAGE_PROMETHEUS|PROMETHEUS_VERSION|PROMETHEUS_VERSION|Prometheus time-series DB" ;;
+        grafana)        echo "dockerfiles/Dockerfile.grafana|moav-grafana:local|IMAGE_GRAFANA|GRAFANA_VERSION|GRAFANA_VERSION|Grafana dashboards" ;;
+        node-exporter)  echo "dockerfiles/Dockerfile.node-exporter|moav-node-exporter:local|IMAGE_NODE_EXPORTER|NODE_EXPORTER_VERSION|NODE_EXPORTER_VERSION|Node system metrics" ;;
+        nginx)          echo "dockerfiles/Dockerfile.nginx|moav-nginx:local|IMAGE_NGINX||NGINX_VERSION|Nginx web server" ;;
+        certbot)        echo "dockerfiles/Dockerfile.certbot|moav-certbot:local|IMAGE_CERTBOT||CERTBOT_VERSION|Let's Encrypt client" ;;
+        *) return 1 ;;
+    esac
+}
 
 # Default services to build with --local (commonly blocked registries)
 DEFAULT_LOCAL_BUILDS="cadvisor clash-exporter"
@@ -5868,7 +6001,7 @@ build_local_images() {
 
         # Then build external images
         echo "Step 2: Building external images locally..."
-        services_to_build=("${!LOCAL_BUILD_MAP[@]}")
+        read -ra services_to_build <<< "$ALL_LOCAL_BUILD_SERVICES"
         echo "Images to build:"
         for svc in "${services_to_build[@]}"; do
             echo "  - $svc"
@@ -5883,11 +6016,12 @@ build_local_images() {
 
     # Build each service
     for service in "${services_to_build[@]}"; do
-        local build_info="${LOCAL_BUILD_MAP[$service]}"
+        local build_info
+        build_info=$(_local_build_info "$service" 2>/dev/null) || true
 
         if [[ -z "$build_info" ]]; then
             warn "Unknown service for local build: $service"
-            echo "Available services: ${!LOCAL_BUILD_MAP[*]}"
+            echo "Available services: $ALL_LOCAL_BUILD_SERVICES"
             continue
         fi
 
@@ -6610,6 +6744,66 @@ cmd_migrate_ip() {
                     rm -f "$user_dir/slipstream-instructions.txt.bak"
                 fi
 
+                # Update AmneziaWG configs
+                if [[ -f "$user_dir/amneziawg.conf" ]]; then
+                    sed -i.bak "s/Endpoint = $old_ip:/Endpoint = $new_ip:/g" "$user_dir/amneziawg.conf"
+                    rm -f "$user_dir/amneziawg.conf.bak"
+                fi
+                if [[ -f "$user_dir/amneziawg-ipv6.conf" ]] && [[ -n "$new_ipv6" ]]; then
+                    if [[ -n "$old_ipv6" ]]; then
+                        sed -i.bak "s/Endpoint = \[$old_ipv6\]:/Endpoint = [$new_ipv6]:/g" "$user_dir/amneziawg-ipv6.conf"
+                    fi
+                    rm -f "$user_dir/amneziawg-ipv6.conf.bak"
+                fi
+
+                # Update Telegram MTProxy links
+                if [[ -f "$user_dir/telegram-proxy-link.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/telegram-proxy-link.txt"
+                    rm -f "$user_dir/telegram-proxy-link.txt.bak"
+                fi
+                if [[ -f "$user_dir/telegram-proxy-instructions.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/telegram-proxy-instructions.txt"
+                    rm -f "$user_dir/telegram-proxy-instructions.txt.bak"
+                fi
+
+                # Update XHTTP configs
+                if [[ -f "$user_dir/xhttp-vless.txt" ]]; then
+                    sed -i.bak "s/@$old_ip:/@$new_ip:/g" "$user_dir/xhttp-vless.txt"
+                    rm -f "$user_dir/xhttp-vless.txt.bak"
+                fi
+                if [[ -f "$user_dir/xhttp.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/xhttp.txt"
+                    rm -f "$user_dir/xhttp.txt.bak"
+                fi
+
+                # Update CDN VLESS config
+                if [[ -f "$user_dir/cdn-vless.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/cdn-vless.txt"
+                    rm -f "$user_dir/cdn-vless.txt.bak"
+                fi
+
+                # Update TrustTunnel config
+                if [[ -f "$user_dir/trusttunnel.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/trusttunnel.txt"
+                    rm -f "$user_dir/trusttunnel.txt.bak"
+                fi
+
+                # Update XDNS configs
+                if [[ -f "$user_dir/xdns-direct-config.json" ]]; then
+                    sed -i.bak "s/\"address\": \"$old_ip\"/\"address\": \"$new_ip\"/g" "$user_dir/xdns-direct-config.json"
+                    rm -f "$user_dir/xdns-direct-config.json.bak"
+                fi
+                if [[ -f "$user_dir/xdns.txt" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/xdns.txt"
+                    rm -f "$user_dir/xdns.txt.bak"
+                fi
+
+                # Update README.html (catch-all for any remaining IPs)
+                if [[ -f "$user_dir/README.html" ]]; then
+                    sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/README.html"
+                    rm -f "$user_dir/README.html.bak"
+                fi
+
                 # Update README
                 if [[ -f "$user_dir/README.md" ]]; then
                     sed -i.bak "s/$old_ip/$new_ip/g" "$user_dir/README.md"
@@ -6792,11 +6986,11 @@ cmd_regenerate_users() {
     local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" .env "true")
     local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" .env "true")
     local enable_amneziawg=$(get_env_val "ENABLE_AMNEZIAWG" .env "true")
-    local enable_dnstt=$(get_env_val "ENABLE_DNSTT" .env "true")
+    local enable_dnstt=$(get_env_val "ENABLE_DNSTT" .env "false")
     local enable_slipstream=$(get_env_val "ENABLE_SLIPSTREAM" .env "false")
     local slipstream_subdomain=$(get_env_val "SLIPSTREAM_SUBDOMAIN" .env "s")
     local enable_trusttunnel=$(get_env_val "ENABLE_TRUSTTUNNEL" .env "true")
-    local enable_xhttp=$(get_env_val "ENABLE_XHTTP" .env "false")
+    local enable_xhttp=$(get_env_val "ENABLE_XHTTP" .env "true")
     local port_xhttp=$(get_env_val "PORT_XHTTP" .env "2096")
     local xhttp_reality_target=$(get_env_val "XHTTP_REALITY_TARGET" .env "dl.google.com:443")
     local enable_telemt=$(get_env_val "ENABLE_TELEMT" .env "true")
@@ -6825,11 +7019,11 @@ cmd_regenerate_users() {
             -e "ENABLE_HYSTERIA2=${enable_hysteria2:-true}" \
             -e "ENABLE_WIREGUARD=${enable_wireguard:-true}" \
             -e "ENABLE_AMNEZIAWG=${enable_amneziawg:-true}" \
-            -e "ENABLE_DNSTT=${enable_dnstt:-true}" \
+            -e "ENABLE_DNSTT=${enable_dnstt:-false}" \
             -e "ENABLE_SLIPSTREAM=${enable_slipstream:-false}" \
             -e "SLIPSTREAM_SUBDOMAIN=${slipstream_subdomain:-s}" \
             -e "ENABLE_TRUSTTUNNEL=${enable_trusttunnel:-true}" \
-            -e "ENABLE_XHTTP=${enable_xhttp:-false}" \
+            -e "ENABLE_XHTTP=${enable_xhttp:-true}" \
             -e "PORT_XHTTP=${port_xhttp:-2096}" \
             -e "XHTTP_REALITY_TARGET=${xhttp_reality_target:-dl.google.com:443}" \
             -e "ENABLE_TELEMT=${enable_telemt:-true}" \

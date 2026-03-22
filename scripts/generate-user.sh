@@ -403,7 +403,7 @@ fi
 # -----------------------------------------------------------------------------
 # Generate XHTTP (Xray-core) client config (if enabled)
 # -----------------------------------------------------------------------------
-if [[ "${ENABLE_XHTTP:-false}" == "true" ]]; then
+if [[ "${ENABLE_XHTTP:-true}" == "true" ]]; then
   if [[ -f "$OUTPUT_DIR/xhttp-vless.txt" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
     log_info "  - XHTTP config exists, skipping"
   else
@@ -507,7 +507,7 @@ fi
 # -----------------------------------------------------------------------------
 # Generate dnstt instructions (if enabled)
 # -----------------------------------------------------------------------------
-if [[ "${ENABLE_DNSTT:-true}" == "true" ]]; then
+if [[ "${ENABLE_DNSTT:-false}" == "true" ]]; then
     if [[ -f "$OUTPUT_DIR/dnstt-instructions.txt" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
         log_info "  - dnstt instructions exist, skipping"
     else
@@ -544,13 +544,65 @@ if [[ "${ENABLE_TELEMT:-true}" == "true" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
+# Generate XDNS client configs (if enabled)
+# -----------------------------------------------------------------------------
+if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
+    if [[ -f "$OUTPUT_DIR/xdns-config.json" ]] && [[ -f "$OUTPUT_DIR/xdns-direct-config.json" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
+        log_info "  - XDNS config exists, skipping"
+    else
+        BUNDLE_CHANGED=true
+        _xdns_domain="${XDNS_SUBDOMAIN:-x}.${DOMAIN}"
+        _xdns_mtu="${XDNS_MTU:-35}"
+
+        # Load user UUID
+        _xdns_uuid=""
+        if [[ -f "$STATE_DIR/users/$USER_ID/uuid.env" ]]; then
+            source "$STATE_DIR/users/$USER_ID/uuid.env"
+            _xdns_uuid="${USER_UUID:-}"
+        fi
+
+        if [[ -n "$_xdns_uuid" ]]; then
+            # DNS resolver config
+            cat > "$OUTPUT_DIR/xdns-config.json" <<XDNSEOF
+{
+  "remarks": "MoaV-XDNS-${USER_ID} (via DNS)",
+  "log": {"loglevel": "warning"},
+  "inbounds": [{"listen": "127.0.0.1", "port": 7891, "protocol": "socks", "settings": {"auth": "noauth", "udp": true}}],
+  "outbounds": [
+    {"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "8.8.8.8", "port": 53, "users": [{"id": "$_xdns_uuid", "encryption": "none"}]}]}, "streamSettings": {"network": "kcp", "kcpSettings": {"mtu": $_xdns_mtu, "tti": 100, "uplinkCapacity": 0, "downlinkCapacity": 0, "congestion": true}, "finalmask": {"udp": [{"type": "xdns", "settings": {"domain": "$_xdns_domain"}}]}}},
+    {"tag": "direct", "protocol": "freedom"}
+  ],
+  "routing": {"rules": [{"type": "field", "ip": ["::/0"], "outboundTag": "direct"}]}
+}
+XDNSEOF
+
+            # Direct connection config
+            cat > "$OUTPUT_DIR/xdns-direct-config.json" <<XDNSEOF2
+{
+  "remarks": "MoaV-XDNS-${USER_ID} (direct)",
+  "log": {"loglevel": "warning"},
+  "inbounds": [{"listen": "127.0.0.1", "port": 7891, "protocol": "socks", "settings": {"auth": "noauth", "udp": true}}],
+  "outbounds": [
+    {"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "${SERVER_IP}", "port": ${PORT_XDNS:-53}, "users": [{"id": "$_xdns_uuid", "encryption": "none"}]}]}, "streamSettings": {"network": "kcp", "kcpSettings": {"mtu": $_xdns_mtu, "tti": 100, "uplinkCapacity": 0, "downlinkCapacity": 0, "congestion": true}, "finalmask": {"udp": [{"type": "xdns", "settings": {"domain": "$_xdns_domain"}}]}}},
+    {"tag": "direct", "protocol": "freedom"}
+  ],
+  "routing": {"rules": [{"type": "field", "ip": ["::/0"], "outboundTag": "direct"}]}
+}
+XDNSEOF2
+
+            log_info "  - XDNS configs generated"
+        fi
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # Generate README.html from template
 # -----------------------------------------------------------------------------
 TEMPLATE_FILE="/docs/client-guide-template.html"
 OUTPUT_HTML="$OUTPUT_DIR/README.html"
 
-# Only regenerate README.html if bundle changed or it doesn't exist
-if [[ -f "$OUTPUT_HTML" ]] && [[ "$BUNDLE_CHANGED" == "false" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
+# Regenerate README.html if: bundle changed, doesn't exist, or template is newer
+if [[ -f "$OUTPUT_HTML" ]] && [[ "$BUNDLE_CHANGED" == "false" ]] && [[ "$FORCE_REGENERATE" != "force" ]] && [[ ! "$TEMPLATE_FILE" -nt "$OUTPUT_HTML" ]]; then
     log_info "  - README.html exists and no new configs, skipping"
 elif [[ -f "$TEMPLATE_FILE" ]]; then
     # Read config values
@@ -625,7 +677,7 @@ elif [[ -f "$TEMPLATE_FILE" ]]; then
         # Build list of disabled services
         DISABLED_SERVICES=""
         [[ "${ENABLE_WIREGUARD:-true}" != "true" ]] && DISABLED_SERVICES+="WireGuard, "
-        [[ "${ENABLE_DNSTT:-true}" != "true" ]] && DISABLED_SERVICES+="DNS Tunnel, "
+        [[ "${ENABLE_DNSTT:-false}" != "true" ]] && DISABLED_SERVICES+="DNS Tunnel, "
         [[ "${ENABLE_TROJAN:-true}" != "true" ]] && DISABLED_SERVICES+="Trojan, "
         [[ "${ENABLE_HYSTERIA2:-true}" != "true" ]] && DISABLED_SERVICES+="Hysteria2, "
         [[ "${ENABLE_REALITY:-true}" != "true" ]] && DISABLED_SERVICES+="Reality, "
@@ -730,11 +782,25 @@ with open(filepath, 'w') as f:
         replace_placeholder "{{CONFIG_SLIPSTREAM}}" "Slipstream not enabled"
     fi
 
-    # XDNS config (multiline JSON)
-    if [[ -n "${CONFIG_XDNS:-}" ]]; then
-        replace_placeholder "{{CONFIG_XDNS}}" "$CONFIG_XDNS"
-        replace_placeholder "{{CONFIG_XDNS_DIRECT}}" "${CONFIG_XDNS_DIRECT:-XDNS direct config not available}"
-        replace_placeholder "{{XDNS_DISPLAY}}" ""
+    # XDNS config (multiline JSON — use file-based replacement to avoid shell escaping issues)
+    if [[ -f "$OUTPUT_DIR/xdns-config.json" ]]; then
+        python3 -c "
+import sys, os
+html_path = sys.argv[1]
+dns_path = sys.argv[2]
+direct_path = sys.argv[3]
+with open(html_path, 'r') as f: html = f.read()
+try:
+    with open(dns_path, 'r') as f: dns_cfg = f.read().strip()
+except: dns_cfg = 'XDNS config not available'
+try:
+    with open(direct_path, 'r') as f: direct_cfg = f.read().strip()
+except: direct_cfg = 'XDNS direct config not available'
+html = html.replace('{{CONFIG_XDNS}}', dns_cfg)
+html = html.replace('{{CONFIG_XDNS_DIRECT}}', direct_cfg)
+html = html.replace('{{XDNS_DISPLAY}}', '')
+with open(html_path, 'w') as f: f.write(html)
+" "$OUTPUT_HTML" "$OUTPUT_DIR/xdns-config.json" "$OUTPUT_DIR/xdns-direct-config.json"
     else
         replace_placeholder "{{CONFIG_XDNS}}" "XDNS not enabled"
         replace_placeholder "{{CONFIG_XDNS_DIRECT}}" "XDNS not enabled"
