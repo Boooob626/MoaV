@@ -5920,7 +5920,7 @@ cmd_build() {
                 local compose_services=()
                 local local_services=()
                 for svc in $services; do
-                    if [[ -n "${LOCAL_BUILD_MAP[$svc]:-}" ]]; then
+                    if _local_build_info "$svc" >/dev/null 2>&1; then
                         local_services+=("$svc")
                     else
                         compose_services+=("$svc")
@@ -5950,15 +5950,20 @@ cmd_build() {
 
 # Map of services that can be built locally
 # Format: "dockerfile|image_tag|image_env_var|version_env_var|version_arg|description"
-declare -A LOCAL_BUILD_MAP=(
-    ["cadvisor"]="dockerfiles/Dockerfile.cadvisor|moav-cadvisor:local|IMAGE_CADVISOR|CADVISOR_VERSION|CADVISOR_VERSION|cAdvisor container metrics (gcr.io)"
-    ["clash-exporter"]="dockerfiles/Dockerfile.clash-exporter|moav-clash-exporter:local|IMAGE_CLASH_EXPORTER|CLASH_EXPORTER_VERSION|CLASH_EXPORTER_VERSION|Clash API exporter (ghcr.io)"
-    ["prometheus"]="dockerfiles/Dockerfile.prometheus|moav-prometheus:local|IMAGE_PROMETHEUS|PROMETHEUS_VERSION|PROMETHEUS_VERSION|Prometheus time-series DB"
-    ["grafana"]="dockerfiles/Dockerfile.grafana|moav-grafana:local|IMAGE_GRAFANA|GRAFANA_VERSION|GRAFANA_VERSION|Grafana dashboards"
-    ["node-exporter"]="dockerfiles/Dockerfile.node-exporter|moav-node-exporter:local|IMAGE_NODE_EXPORTER|NODE_EXPORTER_VERSION|NODE_EXPORTER_VERSION|Node system metrics"
-    ["nginx"]="dockerfiles/Dockerfile.nginx|moav-nginx:local|IMAGE_NGINX||NGINX_VERSION|Nginx web server"
-    ["certbot"]="dockerfiles/Dockerfile.certbot|moav-certbot:local|IMAGE_CERTBOT||CERTBOT_VERSION|Let's Encrypt client"
-)
+ALL_LOCAL_BUILD_SERVICES="cadvisor clash-exporter prometheus grafana node-exporter nginx certbot"
+
+_local_build_info() {
+    case "$1" in
+        cadvisor)       echo "dockerfiles/Dockerfile.cadvisor|moav-cadvisor:local|IMAGE_CADVISOR|CADVISOR_VERSION|CADVISOR_VERSION|cAdvisor container metrics (gcr.io)" ;;
+        clash-exporter) echo "dockerfiles/Dockerfile.clash-exporter|moav-clash-exporter:local|IMAGE_CLASH_EXPORTER|CLASH_EXPORTER_VERSION|CLASH_EXPORTER_VERSION|Clash API exporter (ghcr.io)" ;;
+        prometheus)     echo "dockerfiles/Dockerfile.prometheus|moav-prometheus:local|IMAGE_PROMETHEUS|PROMETHEUS_VERSION|PROMETHEUS_VERSION|Prometheus time-series DB" ;;
+        grafana)        echo "dockerfiles/Dockerfile.grafana|moav-grafana:local|IMAGE_GRAFANA|GRAFANA_VERSION|GRAFANA_VERSION|Grafana dashboards" ;;
+        node-exporter)  echo "dockerfiles/Dockerfile.node-exporter|moav-node-exporter:local|IMAGE_NODE_EXPORTER|NODE_EXPORTER_VERSION|NODE_EXPORTER_VERSION|Node system metrics" ;;
+        nginx)          echo "dockerfiles/Dockerfile.nginx|moav-nginx:local|IMAGE_NGINX||NGINX_VERSION|Nginx web server" ;;
+        certbot)        echo "dockerfiles/Dockerfile.certbot|moav-certbot:local|IMAGE_CERTBOT||CERTBOT_VERSION|Let's Encrypt client" ;;
+        *) return 1 ;;
+    esac
+}
 
 # Default services to build with --local (commonly blocked registries)
 DEFAULT_LOCAL_BUILDS="cadvisor clash-exporter"
@@ -5996,7 +6001,7 @@ build_local_images() {
 
         # Then build external images
         echo "Step 2: Building external images locally..."
-        services_to_build=("${!LOCAL_BUILD_MAP[@]}")
+        read -ra services_to_build <<< "$ALL_LOCAL_BUILD_SERVICES"
         echo "Images to build:"
         for svc in "${services_to_build[@]}"; do
             echo "  - $svc"
@@ -6011,11 +6016,12 @@ build_local_images() {
 
     # Build each service
     for service in "${services_to_build[@]}"; do
-        local build_info="${LOCAL_BUILD_MAP[$service]}"
+        local build_info
+        build_info=$(_local_build_info "$service" 2>/dev/null) || true
 
         if [[ -z "$build_info" ]]; then
             warn "Unknown service for local build: $service"
-            echo "Available services: ${!LOCAL_BUILD_MAP[*]}"
+            echo "Available services: $ALL_LOCAL_BUILD_SERVICES"
             continue
         fi
 
