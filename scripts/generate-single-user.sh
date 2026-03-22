@@ -155,7 +155,7 @@ fi
 
 # Add to Xray config (XHTTP)
 XRAY_CONFIG="/configs/xray/config.json"
-if [[ "${ENABLE_XHTTP:-false}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
+if [[ "${ENABLE_XHTTP:-true}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
     # Check if user already exists
     if jq -e --arg uuid "$USER_UUID" '.inbounds[0].settings.clients[] | select(.id == $uuid)' "$XRAY_CONFIG" >/dev/null 2>&1; then
         log_info "User $USER_ID already exists in Xray config"
@@ -223,11 +223,11 @@ if [[ -n "$DONATE_ONLY" ]]; then
 else
     export ENABLE_WIREGUARD="${ENABLE_WIREGUARD:-true}"
     export ENABLE_AMNEZIAWG="${ENABLE_AMNEZIAWG:-true}"
-    export ENABLE_DNSTT="${ENABLE_DNSTT:-true}"
+    export ENABLE_DNSTT="${ENABLE_DNSTT:-false}"
     export ENABLE_SLIPSTREAM="${ENABLE_SLIPSTREAM:-false}"
     export ENABLE_HYSTERIA2="${ENABLE_HYSTERIA2:-true}"
     export ENABLE_TRUSTTUNNEL="${ENABLE_TRUSTTUNNEL:-true}"
-    export ENABLE_XHTTP="${ENABLE_XHTTP:-false}"
+    export ENABLE_XHTTP="${ENABLE_XHTTP:-true}"
     export ENABLE_TELEMT="${ENABLE_TELEMT:-true}"
 fi
 export PORT_XHTTP="${PORT_XHTTP:-2096}"

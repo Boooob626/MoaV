@@ -410,7 +410,7 @@ echo ""
 # -----------------------------------------------------------------------------
 # Generate dnstt instructions (shared for all users)
 # -----------------------------------------------------------------------------
-if [[ "${ENABLE_DNSTT:-true}" == "true" ]] && [[ -f "outputs/dnstt/server.pub" ]]; then
+if [[ "${ENABLE_DNSTT:-false}" == "true" ]] && [[ -f "outputs/dnstt/server.pub" ]]; then
     DNSTT_PUBKEY=$(cat "outputs/dnstt/server.pub" 2>/dev/null || echo "KEY_NOT_FOUND")
     DNSTT_DOMAIN="${DNSTT_SUBDOMAIN:-t}.${DOMAIN}"
 

@@ -418,7 +418,7 @@ install_qrencode() {
 }
 
 # Read a value from .env file — handles duplicates (last wins), inline comments, and quotes
-# Usage: val=$(get_env_val "ENABLE_XHTTP" "$env_file" "false")
+# Usage: val=$(get_env_val "ENABLE_XHTTP" "$env_file" "true")
 get_env_val() {
     local key="$1" file="$2" default="${3:-}"
     local val
@@ -559,18 +559,19 @@ check_prerequisites() {
                     echo "  Add these DNS records in your DNS provider (e.g., Cloudflare):"
                     echo ""
                     echo -e "  ${WHITE}Required Records:${NC}"
-                    printf "  %-8s %-12s %-20s %s\n" "Type" "Name" "Value" "Proxy"
-                    printf "  %-8s %-12s %-20s %s\n" "────" "────" "─────" "────"
-                    printf "  %-8s %-12s %-20s %s\n" "A" "@" "$detected_ip" "DNS only (gray)"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "Type" "Name" "Value" "Proxy" "Used by"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "────" "────" "─────" "────" "───────"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "A" "@" "$detected_ip" "DNS only (gray)" "Reality, Trojan, Hysteria2, XHTTP, WG"
                     echo ""
-                    echo -e "  ${WHITE}For DNS Tunnels (dnstt + Slipstream):${NC}"
-                    printf "  %-8s %-12s %-20s %s\n" "A" "dns" "$detected_ip" "DNS only (gray)"
-                    printf "  %-8s %-12s %-20s %s\n" "NS" "t" "dns.$input_domain" "-"
-                    printf "  %-8s %-12s %-20s %s\n" "NS" "s" "dns.$input_domain" "-"
+                    echo -e "  ${WHITE}For DNS Tunnels (dnstt, Slipstream, XDNS):${NC}"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "A" "dns" "$detected_ip" "DNS only (gray)" "NS delegation target"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "NS" "t" "dns.$input_domain" "-" "dnstt"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "NS" "s" "dns.$input_domain" "-" "Slipstream"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "NS" "x" "dns.$input_domain" "-" "XDNS"
                     echo ""
                     echo -e "  ${WHITE}Optional - CDN Mode (Cloudflare proxied):${NC}"
-                    printf "  %-8s %-12s %-20s %s\n" "A" "cdn" "$detected_ip" "Proxied (orange)"
-                    printf "  %-8s %-12s %-20s %s\n" "A" "grafana" "$detected_ip" "Proxied (orange)"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "A" "cdn" "$detected_ip" "Proxied (orange)" "CDN VLESS"
+                    printf "  %-6s %-12s %-20s %-18s %s\n" "A" "grafana" "$detected_ip" "Proxied (orange)" "Grafana dashboard"
                     echo ""
                     echo -e "  ${YELLOW}⚠ CDN Mode requires an Origin Rule in Cloudflare:${NC}"
                     echo "    Rules → Origin Rules → Create rule"
@@ -1659,24 +1660,54 @@ run_bootstrap() {
 # =============================================================================
 
 check_dns_for_dnstunnel() {
-    # Check if dnstunnel is in selected profiles
+    # Check if any DNS tunnel protocol needs port 53
+    local needs_port53=false
+    local env_file="$SCRIPT_DIR/.env"
+
+    # Check if dnstunnel profile is selected AND dnstt/slipstream are enabled
     local has_dnstunnel=false
+    local has_xhttp=false
     for p in "${SELECTED_PROFILES[@]}"; do
         if [[ "$p" == "dnstunnel" || "$p" == "all" ]]; then
             has_dnstunnel=true
-            break
+        fi
+        if [[ "$p" == "xhttp" || "$p" == "all" ]]; then
+            has_xhttp=true
         fi
     done
 
-    if ! $has_dnstunnel; then
+    local dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
+    local slip_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
+    local xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "true")
+
+    # Check for port 53 conflict between XDNS and dnstt/Slipstream
+    if [[ "$xdns_enabled" == "true" ]] && [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
+        echo ""
+        warn "XDNS and dnstt/Slipstream both need port 53 — only one can be active."
+        echo "  XDNS is enabled by default (recommended). Disabling dnstt/Slipstream."
+        sed -i.bak "s/^ENABLE_DNSTT=.*/ENABLE_DNSTT=false/" "$env_file" && rm -f "$env_file.bak"
+        sed -i.bak "s/^ENABLE_SLIPSTREAM=.*/ENABLE_SLIPSTREAM=false/" "$env_file" && rm -f "$env_file.bak"
+        dnstt_enabled="false"
+        slip_enabled="false"
+    fi
+
+    # Determine if port 53 is needed
+    if $has_dnstunnel && [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
+        needs_port53=true
+    fi
+    if $has_xhttp && [[ "$xdns_enabled" == "true" ]]; then
+        needs_port53=true
+    fi
+
+    if ! $needs_port53; then
         return 0
     fi
 
-    # Check if port 53 is in use
+    # Check if port 53 is in use by systemd-resolved
     if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
         echo ""
         warn "Port 53 is in use (likely by systemd-resolved)"
-        echo "  DNS tunnels (dnstt/Slipstream) require port 53 to be free."
+        echo "  DNS tunnels (dnstt/Slipstream/XDNS) require port 53 to be free."
         echo ""
 
         if confirm "Disable systemd-resolved and configure direct DNS?" "y"; then
@@ -1720,7 +1751,7 @@ cmd_setup_dns() {
     info "This will:"
     echo "  • Stop and disable systemd-resolved"
     echo "  • Configure direct DNS resolution (1.1.1.1, 8.8.8.8)"
-    echo "  • Free port 53 for DNS tunnels (dnstt + Slipstream)"
+    echo "  • Free port 53 for DNS tunnels (XDNS, dnstt, Slipstream)"
     echo ""
 
     if ! confirm "Continue?" "y"; then
@@ -1766,9 +1797,9 @@ ZONEOF
 
     # DNS tunnel nameserver (needed for dnstt/Slipstream/XDNS)
     local dnstt_enabled slipstream_enabled xdns_enabled
-    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
     slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
-    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "false")
+    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "true")
 
     # Always include DNS tunnel records (user can decide which to enable later)
     local dnstt_sub slip_sub xdns_sub
@@ -2241,10 +2272,10 @@ doctor_check_dns() {
         fi
     fi
 
-    if doctor_is_enabled "$(get_env_val "ENABLE_DNSTT" "$env_file" "true")"; then
+    if doctor_is_enabled "$(get_env_val "ENABLE_DNSTT" "$env_file" "false")"; then
         dnstt_enabled=true
     fi
-    if doctor_is_enabled "$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "true")"; then
+    if doctor_is_enabled "$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")"; then
         slipstream_enabled=true
     fi
 
@@ -2452,12 +2483,12 @@ doctor_check_ports() {
 
     # Check for systemd-resolved on port 53 (if dnstt enabled)
     local dnstt_enabled
-    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
     local slip_enabled
     slip_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
 
     local xdns_enabled
-    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "false")
+    xdns_enabled=$(get_env_val "ENABLE_XDNS" "$env_file" "true")
 
     # Check XDNS vs dnstt/slipstream port 53 conflict
     if [[ "$xdns_enabled" == "true" ]] && [[ "$dnstt_enabled" == "true" || "$slip_enabled" == "true" ]]; then
@@ -2737,7 +2768,7 @@ show_status() {
         local enable_trojan=$(get_env_val "ENABLE_TROJAN" "$env_file" "true")
         local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" "$env_file" "true")
         local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" "$env_file" "true")
-        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
         local enable_admin=$(get_env_val "ENABLE_ADMIN_UI" "$env_file" "true")
 
         # Mark services as disabled based on ENABLE_* settings
@@ -2940,12 +2971,12 @@ select_profiles() {
         local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" "$env_file" "true")
         local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" "$env_file" "true")
         local enable_amneziawg=$(get_env_val "ENABLE_AMNEZIAWG" "$env_file" "true")
-        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
         local enable_slipstream=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
         local enable_trusttunnel=$(get_env_val "ENABLE_TRUSTTUNNEL" "$env_file" "true")
         local enable_telemt=$(get_env_val "ENABLE_TELEMT" "$env_file" "true")
         local enable_admin=$(get_env_val "ENABLE_ADMIN_UI" "$env_file" "true")
-        local enable_xhttp=$(get_env_val "ENABLE_XHTTP" "$env_file" "false")
+        local enable_xhttp=$(get_env_val "ENABLE_XHTTP" "$env_file" "true")
 
         # proxy is disabled if all three protocols are disabled
         if [[ "$enable_reality" != "true" ]] && [[ "$enable_trojan" != "true" ]] && [[ "$enable_hysteria2" != "true" ]]; then
@@ -3058,12 +3089,12 @@ select_profiles() {
         local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" "$env_file" "true")
         local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" "$env_file" "true")
         local enable_amneziawg=$(get_env_val "ENABLE_AMNEZIAWG" "$env_file" "true")
-        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "true")
+        local enable_dnstt=$(get_env_val "ENABLE_DNSTT" "$env_file" "false")
         local enable_slipstream=$(get_env_val "ENABLE_SLIPSTREAM" "$env_file" "false")
         local enable_trusttunnel=$(get_env_val "ENABLE_TRUSTTUNNEL" "$env_file" "true")
         local enable_telemt=$(get_env_val "ENABLE_TELEMT" "$env_file" "true")
         local enable_admin=$(get_env_val "ENABLE_ADMIN_UI" "$env_file" "true")
-        local enable_xhttp=$(get_env_val "ENABLE_XHTTP" "$env_file" "false")
+        local enable_xhttp=$(get_env_val "ENABLE_XHTTP" "$env_file" "true")
 
         # Build profiles list based on enabled services
         SELECTED_PROFILES=()
@@ -5380,11 +5411,11 @@ cmd_start() {
 
     # Check port 53 conflicts for DNS tunnels
     local dnstt_enabled
-    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "true")
+    dnstt_enabled=$(get_env_val "ENABLE_DNSTT" "false")
     local slipstream_enabled
     slipstream_enabled=$(get_env_val "ENABLE_SLIPSTREAM" "false")
     local xdns_start_enabled
-    xdns_start_enabled=$(get_env_val "ENABLE_XDNS" "false")
+    xdns_start_enabled=$(get_env_val "ENABLE_XDNS" "true")
 
     # Warn if both XDNS and dnstt/Slipstream are enabled (port 53 conflict)
     if [[ "$xdns_start_enabled" == "true" ]] && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
@@ -5394,11 +5425,20 @@ cmd_start() {
         echo ""
     fi
 
-    if echo "$profiles" | grep -qE "dnstunnel|all" && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]] && [[ "$xdns_start_enabled" != "true" ]]; then
+    # Check if any DNS tunnel needs port 53
+    local needs_port53=false
+    if echo "$profiles" | grep -qE "dnstunnel|all" && [[ "$dnstt_enabled" == "true" || "$slipstream_enabled" == "true" ]]; then
+        needs_port53=true
+    fi
+    if echo "$profiles" | grep -qE "xhttp|all" && [[ "$xdns_start_enabled" == "true" ]]; then
+        needs_port53=true
+    fi
+
+    if $needs_port53; then
         if ss -ulnp 2>/dev/null | grep -q ':53 ' || netstat -ulnp 2>/dev/null | grep -q ':53 '; then
             echo ""
             warn "Port 53 is in use (likely by systemd-resolved)"
-            echo "  DNS tunnels (dnstt/Slipstream) require port 53 to be free."
+            echo "  DNS tunnels (dnstt/Slipstream/XDNS) require port 53 to be free."
             echo ""
             if confirm "Disable systemd-resolved and configure direct DNS?" "y"; then
                 setup_dns_for_dnstt
@@ -6957,11 +6997,11 @@ cmd_regenerate_users() {
     local enable_hysteria2=$(get_env_val "ENABLE_HYSTERIA2" .env "true")
     local enable_wireguard=$(get_env_val "ENABLE_WIREGUARD" .env "true")
     local enable_amneziawg=$(get_env_val "ENABLE_AMNEZIAWG" .env "true")
-    local enable_dnstt=$(get_env_val "ENABLE_DNSTT" .env "true")
+    local enable_dnstt=$(get_env_val "ENABLE_DNSTT" .env "false")
     local enable_slipstream=$(get_env_val "ENABLE_SLIPSTREAM" .env "false")
     local slipstream_subdomain=$(get_env_val "SLIPSTREAM_SUBDOMAIN" .env "s")
     local enable_trusttunnel=$(get_env_val "ENABLE_TRUSTTUNNEL" .env "true")
-    local enable_xhttp=$(get_env_val "ENABLE_XHTTP" .env "false")
+    local enable_xhttp=$(get_env_val "ENABLE_XHTTP" .env "true")
     local port_xhttp=$(get_env_val "PORT_XHTTP" .env "2096")
     local xhttp_reality_target=$(get_env_val "XHTTP_REALITY_TARGET" .env "dl.google.com:443")
     local enable_telemt=$(get_env_val "ENABLE_TELEMT" .env "true")
@@ -6990,11 +7030,11 @@ cmd_regenerate_users() {
             -e "ENABLE_HYSTERIA2=${enable_hysteria2:-true}" \
             -e "ENABLE_WIREGUARD=${enable_wireguard:-true}" \
             -e "ENABLE_AMNEZIAWG=${enable_amneziawg:-true}" \
-            -e "ENABLE_DNSTT=${enable_dnstt:-true}" \
+            -e "ENABLE_DNSTT=${enable_dnstt:-false}" \
             -e "ENABLE_SLIPSTREAM=${enable_slipstream:-false}" \
             -e "SLIPSTREAM_SUBDOMAIN=${slipstream_subdomain:-s}" \
             -e "ENABLE_TRUSTTUNNEL=${enable_trusttunnel:-true}" \
-            -e "ENABLE_XHTTP=${enable_xhttp:-false}" \
+            -e "ENABLE_XHTTP=${enable_xhttp:-true}" \
             -e "PORT_XHTTP=${port_xhttp:-2096}" \
             -e "XHTTP_REALITY_TARGET=${xhttp_reality_target:-dl.google.com:443}" \
             -e "ENABLE_TELEMT=${enable_telemt:-true}" \

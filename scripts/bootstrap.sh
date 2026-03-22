@@ -38,7 +38,7 @@ done
 domain_required=false
 [[ "${ENABLE_TROJAN:-true}" == "true" ]] && domain_required=true
 [[ "${ENABLE_HYSTERIA2:-true}" == "true" ]] && domain_required=true
-[[ "${ENABLE_DNSTT:-true}" == "true" ]] && domain_required=true
+[[ "${ENABLE_DNSTT:-false}" == "true" ]] && domain_required=true
 [[ "${ENABLE_SLIPSTREAM:-false}" == "true" ]] && domain_required=true
 [[ "${ENABLE_TRUSTTUNNEL:-true}" == "true" ]] && domain_required=true
 
@@ -239,14 +239,14 @@ export ENABLE_TROJAN="${ENABLE_TROJAN:-true}"
 export ENABLE_HYSTERIA2="${ENABLE_HYSTERIA2:-true}"
 export ENABLE_WIREGUARD="${ENABLE_WIREGUARD:-true}"
 export ENABLE_AMNEZIAWG="${ENABLE_AMNEZIAWG:-true}"
-export ENABLE_DNSTT="${ENABLE_DNSTT:-true}"
+export ENABLE_DNSTT="${ENABLE_DNSTT:-false}"
 export ENABLE_SLIPSTREAM="${ENABLE_SLIPSTREAM:-false}"
 export SLIPSTREAM_SUBDOMAIN="${SLIPSTREAM_SUBDOMAIN:-s}"
 export ENABLE_TRUSTTUNNEL="${ENABLE_TRUSTTUNNEL:-true}"
-export ENABLE_XHTTP="${ENABLE_XHTTP:-false}"
+export ENABLE_XHTTP="${ENABLE_XHTTP:-true}"
 export PORT_XHTTP="${PORT_XHTTP:-2096}"
 export XHTTP_REALITY_TARGET="${XHTTP_REALITY_TARGET:-dl.google.com:443}"
-export ENABLE_XDNS="${ENABLE_XDNS:-false}"
+export ENABLE_XDNS="${ENABLE_XDNS:-true}"
 export XDNS_SUBDOMAIN="${XDNS_SUBDOMAIN:-x}"
 export XDNS_MTU="${XDNS_MTU:-35}"
 export PORT_XDNS="${PORT_XDNS:-53}"
@@ -362,7 +362,7 @@ fi
 # -----------------------------------------------------------------------------
 # Generate dnstt server config (before creating users)
 # -----------------------------------------------------------------------------
-if [[ "${ENABLE_DNSTT:-true}" == "true" ]]; then
+if [[ "${ENABLE_DNSTT:-false}" == "true" ]]; then
     log_info "Generating dnstt server configuration..."
     if generate_dnstt_config; then
         log_info "dnstt configuration complete"
@@ -462,7 +462,7 @@ password = \"$USER_PASSWORD\"
 "
 
     # Xray user entry (XHTTP - flow MUST be empty for XHTTP transport)
-    if [[ "${ENABLE_XHTTP:-false}" == "true" ]]; then
+    if [[ "${ENABLE_XHTTP:-true}" == "true" ]]; then
         [[ -n "$XRAY_USERS_JSON" ]] && XRAY_USERS_JSON+=","
         XRAY_USERS_JSON+="{\"id\":\"$USER_UUID\",\"email\":\"${USER_ID}@moav\",\"flow\":\"\"}"
     fi
@@ -571,7 +571,7 @@ password = \"$USER_PASSWORD\"
 "
 
     # Xray user entry for extra user
-    if [[ "${ENABLE_XHTTP:-false}" == "true" ]]; then
+    if [[ "${ENABLE_XHTTP:-true}" == "true" ]]; then
         [[ -n "$XRAY_USERS_JSON" ]] && XRAY_USERS_JSON+=","
         XRAY_USERS_JSON+="{\"id\":\"$USER_UUID\",\"email\":\"${EXTRA_USER_ID}@moav\",\"flow\":\"\"}"
     fi
@@ -628,7 +628,7 @@ fi
 # -----------------------------------------------------------------------------
 # Generate Xray config (if enabled)
 # -----------------------------------------------------------------------------
-if [[ "${ENABLE_XHTTP:-false}" == "true" ]]; then
+if [[ "${ENABLE_XHTTP:-true}" == "true" ]]; then
     # Count users in Xray config for verification
     XRAY_USER_COUNT=$(echo "$XRAY_USERS_JSON" | grep -o '"id"' | wc -l || echo "0")
     log_info "Generating Xray-core (XHTTP) configuration with $XRAY_USER_COUNT users (reusing Reality keys from sing-box)..."

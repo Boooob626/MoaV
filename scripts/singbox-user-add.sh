@@ -369,7 +369,7 @@ fi
 
 # Add user to Xray (XHTTP) if config exists and enabled
 XRAY_CONFIG="configs/xray/config.json"
-if [[ "${ENABLE_XHTTP:-false}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
+if [[ "${ENABLE_XHTTP:-true}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
     log_info "Adding $USERNAME to Xray (XHTTP)..."
 
     # Check if user already exists (search by UUID in the vless-xhttp-reality inbound)
@@ -432,7 +432,7 @@ EOF
 fi
 
 # Generate XDNS client config if enabled
-if [[ "${ENABLE_XDNS:-false}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
+if [[ "${ENABLE_XDNS:-true}" == "true" ]] && [[ -n "${DOMAIN:-}" ]]; then
     _xdns_domain="${XDNS_SUBDOMAIN:-x}.${DOMAIN}"
     _xdns_mtu="${XDNS_MTU:-35}"
     log_info "Generating XDNS client config for $USERNAME..."
@@ -654,7 +654,7 @@ if [[ "$NO_RELOAD" != "true" ]]; then
     fi
 
     # Try to reload Xray (if running)
-    if [[ -f "$XRAY_CONFIG" ]] && [[ "${ENABLE_XHTTP:-false}" == "true" ]]; then
+    if [[ -f "$XRAY_CONFIG" ]] && [[ "${ENABLE_XHTTP:-true}" == "true" ]]; then
         if docker compose --profile xhttp ps xray --status running 2>/dev/null | tail -n +2 | grep -q .; then
             log_info "Restarting Xray to apply new user..."
             docker compose --profile xhttp restart xray
