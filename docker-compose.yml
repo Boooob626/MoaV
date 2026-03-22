@@ -364,6 +364,7 @@ services:
     read_only: true
     tmpfs:
       - /app/tlsfront:rw,size=10m
+      - /app/cache:rw,size=5m
       - /tmp:rw,noexec,size=10m
     mem_limit: 128m
     cpus: 0.5
@@ -753,7 +754,7 @@ services:
       - TZ=${TZ:-UTC}
     # Note: read_only not set - grafana entrypoint writes branding files to container filesystem
     tmpfs:
-      - /tmp:rw,noexec,size=10m
+      - /tmp:rw,size=100m
     mem_limit: 512m
     cpus: 0.5
     depends_on:
