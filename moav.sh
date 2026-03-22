@@ -579,6 +579,9 @@ check_prerequisites() {
                     echo "    • Action: Destination Port → Rewrite to 2082"
                     echo ""
                     echo -e "  See docs/DNS.md for detailed instructions."
+                    echo ""
+                    echo -e "  ${DIM}A BIND-format zone file is saved to outputs/dns-records.txt${NC}"
+                    echo -e "  ${DIM}Import it in Cloudflare: DNS > Records > Import and Upload${NC}"
                     echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
                     echo ""
 

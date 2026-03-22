@@ -783,6 +783,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - NET_BIND_SERVICE
       - CHOWN
       - SETGID
       - SETUID
@@ -795,6 +796,7 @@ services:
       - /etc/nginx/conf.d:rw,size=1m
       - /var/cache/nginx:rw,size=50m
       - /var/run:rw,size=5m
+      - /var/log/nginx:rw,size=10m
     mem_limit: 128m
     cpus: 0.25
     depends_on:
@@ -1058,9 +1060,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,size=10m
     mem_limit: 128m
     cpus: 0.5
     profiles:
