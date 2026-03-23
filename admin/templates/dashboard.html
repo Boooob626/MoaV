@@ -803,7 +803,7 @@
                 {% endif %}
                 {% endif %}
             </div>
-            <div id="create-panel" class="create-panel">
+            <div id="create-panel" class="create-panel persist">
                 <form class="create-form" onsubmit="return createUser(event)">
                     <div>
                         <label class="field-label">Username</label>
@@ -906,14 +906,8 @@
         }
 
         function toggleCreatePanel() {
-            const section = document.getElementById('users-section');
             const panel = document.getElementById('create-panel');
             const btn = event.target;
-            // Expand section first if collapsed
-            if (section.classList.contains('collapsed')) {
-                section.classList.remove('collapsed');
-                section.querySelector('.collapse-btn').textContent = 'collapse';
-            }
             panel.classList.toggle('open');
             panelOpen = panel.classList.contains('open');
             btn.textContent = panelOpen ? '- Close' : '+ New';
