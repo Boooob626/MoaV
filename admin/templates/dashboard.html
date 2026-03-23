@@ -426,8 +426,8 @@
         .section-summary .stat-val.green { color: var(--green); }
         .section-summary .stat-val.blue { color: var(--blue); }
         .section-summary .stat-val.yellow { color: var(--yellow); }
-        .section.collapsed .section-body,
-        .section.collapsed .create-panel { display: none !important; }
+        .section.collapsed .section-body { display: none !important; }
+        .section.collapsed .create-panel:not(.persist) { display: none !important; }
         .section.collapsed .section-summary { display: flex; }
         .section.collapsed .section-head { border-bottom: none; }
 
@@ -464,6 +464,7 @@
         .donate-form input:focus { outline: none; border-color: var(--blue); }
         .proto-checks {
             display: flex;
+            flex-wrap: wrap;
             gap: 0.5rem;
             align-items: center;
             padding-bottom: 0.25rem;
@@ -595,7 +596,8 @@
             .create-form input[type="number"],
             .donate-form input[type="text"],
             .donate-form input[type="number"] { width: 100% !important; }
-            .proto-checks { flex-wrap: wrap; }
+            .proto-checks { flex-wrap: wrap; gap: 0.3rem; }
+            .donate-form > div, .create-panel { max-width: 100%; overflow: hidden; }
             .section-head { flex-wrap: wrap; gap: 0.5rem; }
             .tag { font-size: 0.55rem; padding: 0.05rem 0.3rem; margin-bottom: 0.15rem; }
         }
@@ -717,7 +719,7 @@
                 <span><span class="stat-label">Active:</span><span class="stat-val green" id="mahsa-active-s">-</span></span>
                 <span><span class="stat-label">Inactive:</span><span class="stat-val yellow" id="mahsa-inactive-s">-</span></span>
             </div>
-            <div id="donate-panel" class="create-panel">
+            <div id="donate-panel" class="create-panel persist">
                 <form class="donate-form" onsubmit="return donateMahsanet(event)">
                     <div>
                         <label class="field-label">Count</label>
@@ -977,14 +979,8 @@
         {% if mahsanet_configured %}
         /* MahsaNet donation functions */
         function toggleDonatePanel() {
-            const section = document.getElementById('mahsa-section');
             const panel = document.getElementById('donate-panel');
             const btn = event.target;
-            // Expand section first if collapsed
-            if (section.classList.contains('collapsed')) {
-                section.classList.remove('collapsed');
-                section.querySelector('.collapse-btn').textContent = 'collapse';
-            }
             panel.classList.toggle('open');
             btn.textContent = panel.classList.contains('open') ? '- Close' : '+ Donate';
         }
