@@ -426,8 +426,8 @@
         .section-summary .stat-val.green { color: var(--green); }
         .section-summary .stat-val.blue { color: var(--blue); }
         .section-summary .stat-val.yellow { color: var(--yellow); }
-        .section.collapsed .section-body { display: none !important; }
-        .section.collapsed .create-panel:not(.persist) { display: none !important; }
+        .section.collapsed .section-body,
+        .section.collapsed .create-panel { display: none !important; }
         .section.collapsed .section-summary { display: flex; }
         .section.collapsed .section-head { border-bottom: none; }
 
@@ -719,7 +719,7 @@
                 <span><span class="stat-label">Active:</span><span class="stat-val green" id="mahsa-active-s">-</span></span>
                 <span><span class="stat-label">Inactive:</span><span class="stat-val yellow" id="mahsa-inactive-s">-</span></span>
             </div>
-            <div id="donate-panel" class="create-panel persist">
+            <div id="donate-panel" class="create-panel">
                 <form class="donate-form" onsubmit="return donateMahsanet(event)">
                     <div>
                         <label class="field-label">Count</label>
@@ -803,7 +803,7 @@
                 {% endif %}
                 {% endif %}
             </div>
-            <div id="create-panel" class="create-panel persist">
+            <div id="create-panel" class="create-panel">
                 <form class="create-form" onsubmit="return createUser(event)">
                     <div>
                         <label class="field-label">Username</label>
@@ -845,7 +845,9 @@
                             {% if user.has_cdn %}<span class="tag">CDN</span>{% endif %}
                             {% if user.has_wireguard %}<span class="tag">WG</span>{% endif %}
                             {% if user.has_amneziawg %}<span class="tag">AWG</span>{% endif %}
+                            {% if user.has_xhttp %}<span class="tag">XHTTP</span>{% endif %}
                             {% if user.has_trusttunnel %}<span class="tag">TT</span>{% endif %}
+                            {% if user.has_xdns %}<span class="tag">XDNS</span>{% endif %}
                             {% if user.has_telemt %}<span class="tag">MTProxy</span>{% endif %}
                             {% if user.has_dnstt %}<span class="tag">dnstt</span>{% endif %}
                             {% if user.has_slipstream %}<span class="tag">Slip</span>{% endif %}
@@ -901,14 +903,31 @@
         function toggleSection(id) {
             const section = document.getElementById(id);
             const btn = section.querySelector('.collapse-btn');
+            // Close any open panels before collapsing
+            if (!section.classList.contains('collapsed')) {
+                const openPanel = section.querySelector('.create-panel.open');
+                if (openPanel) {
+                    openPanel.classList.remove('open');
+                    // Reset the toggle button text
+                    const panelBtn = section.querySelector('.btn-green');
+                    if (panelBtn) {
+                        panelBtn.textContent = panelBtn.textContent.includes('Close') ? '+ Donate' : '+ New';
+                    }
+                }
+            }
             section.classList.toggle('collapsed');
             btn.textContent = section.classList.contains('collapsed') ? 'expand' : 'collapse';
         }
 
         function toggleCreatePanel() {
+            const section = document.getElementById('users-section');
             const panel = document.getElementById('create-panel');
             const btn = event.target;
             panel.classList.toggle('open');
+            if (panel.classList.contains('open') && section.classList.contains('collapsed')) {
+                section.classList.remove('collapsed');
+                section.querySelector('.collapse-btn').textContent = 'collapse';
+            }
             panelOpen = panel.classList.contains('open');
             btn.textContent = panelOpen ? '- Close' : '+ New';
         }
@@ -973,10 +992,16 @@
         {% if mahsanet_configured %}
         /* MahsaNet donation functions */
         function toggleDonatePanel() {
+            const section = document.getElementById('mahsa-section');
             const panel = document.getElementById('donate-panel');
             const btn = event.target;
             panel.classList.toggle('open');
-            btn.textContent = panel.classList.contains('open') ? '- Close' : '+ Donate';
+            const isOpen = panel.classList.contains('open');
+            btn.textContent = isOpen ? '- Close' : '+ Donate';
+            if (isOpen && section.classList.contains('collapsed')) {
+                section.classList.remove('collapsed');
+                section.querySelector('.collapse-btn').textContent = 'collapse';
+            }
         }
 
         function showDonateResult(cls, text) {

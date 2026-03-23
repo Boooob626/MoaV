@@ -430,13 +430,15 @@ def get_services_status():
     """Get status of all services with live checks"""
     all_services = [
         {"name": "sing-box", "ports": "443, 8443", "profile": "proxy"},
-        {"name": "decoy", "ports": "—", "profile": "proxy"},
+        {"name": "decoy", "ports": "80", "profile": "proxy"},
+        {"name": "xray", "ports": "2096, 53/udp", "profile": "xhttp"},
+        {"name": "wireguard", "ports": "51820/udp", "profile": "wireguard"},
         {"name": "wstunnel", "ports": "8080", "profile": "wireguard"},
-        {"name": "dnstt", "ports": "53/udp", "profile": "dnstunnel"},
-        {"name": "slipstream", "ports": "—", "profile": "dnstunnel"},
+        {"name": "amneziawg", "ports": "51821/udp", "profile": "amneziawg"},
         {"name": "trusttunnel", "ports": "4443", "profile": "trusttunnel"},
         {"name": "telemt", "ports": "993", "profile": "telegram"},
-        {"name": "amneziawg", "ports": "51820/udp", "profile": "amneziawg"},
+        {"name": "dnstt", "ports": "53/udp", "profile": "dnstunnel"},
+        {"name": "slipstream", "ports": "—", "profile": "dnstunnel"},
         {"name": "conduit", "ports": "dynamic", "profile": "conduit"},
         {"name": "snowflake", "ports": "dynamic", "profile": "snowflake"},
         {"name": "grafana", "ports": "9444", "profile": "monitoring"},
@@ -653,6 +655,8 @@ def list_users():
         has_cdn = (user_dir / "cdn-vless.txt").exists()
         has_amneziawg = (user_dir / "amneziawg.conf").exists()
         has_telemt = (user_dir / "telegram-proxy-link.txt").exists()
+        has_xhttp = (user_dir / "xhttp-vless.txt").exists()
+        has_xdns = (user_dir / "xdns-config.json").exists()
         has_dnstt = (user_dir / "dnstt-instructions.txt").exists()
         has_slipstream = (user_dir / "slipstream-instructions.txt").exists() or (user_dir / "slipstream-cert.pem").exists()
 
@@ -671,6 +675,8 @@ def list_users():
             "has_trusttunnel": has_trusttunnel,
             "has_cdn": has_cdn,
             "has_amneziawg": has_amneziawg,
+            "has_xhttp": has_xhttp,
+            "has_xdns": has_xdns,
             "has_telemt": has_telemt,
             "has_dnstt": has_dnstt,
             "has_slipstream": has_slipstream,
