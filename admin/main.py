@@ -901,6 +901,9 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
         for _, uname in candidates[:count]:
             generated_users.append(uname)
 
+    import asyncio
+    api_call_count = 0
+
     for username in generated_users:
         user_dir = bundle_path / username
 
@@ -922,26 +925,49 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
 
             # POST to MahsaNet — telegram goes to "telegram" pool
             config_pool = "telegram" if protocol == "telegram" else MAHSANET_POOL
-            try:
-                resp = await mahsanet_api_call("POST", "", {
-                    "url": link,
-                    "ads_url": "https://t.me/VahidOnline",
-                    "pool": config_pool,
-                    "use_mux": False,
-                    "use_fragment": False,
-                })
-                if resp.status_code == 201:
-                    config_data = resp.json()
-                    donated.append({
-                        "user": username,
-                        "protocol": protocol,
-                        "id": config_data.get("hash", config_data.get("id", "unknown")),
+
+            # Rate limit: pause every 8 calls to avoid 429
+            api_call_count += 1
+            if api_call_count > 1 and api_call_count % 8 == 0:
+                await asyncio.sleep(3)
+
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                try:
+                    resp = await mahsanet_api_call("POST", "", {
+                        "url": link,
+                        "ads_url": "https://t.me/VahidOnline",
+                        "pool": config_pool,
+                        "use_mux": False,
+                        "use_fragment": False,
                     })
-                else:
-                    err_detail = resp.text[:200]
-                    errors.append(f"{username}/{protocol}: HTTP {resp.status_code} - {err_detail}")
-            except Exception as e:
-                errors.append(f"{username}/{protocol}: {str(e)}")
+                    if resp.status_code == 201:
+                        config_data = resp.json()
+                        donated.append({
+                            "user": username,
+                            "protocol": protocol,
+                            "id": config_data.get("hash", config_data.get("id", "unknown")),
+                        })
+                        break
+                    elif resp.status_code == 429 and attempt < max_retries:
+                        # Extract wait time from response, default 30s
+                        wait = 30
+                        try:
+                            detail = resp.json().get("detail", "")
+                            m = re.search(r'(\d+)\s*second', detail)
+                            if m:
+                                wait = int(m.group(1)) + 2
+                        except Exception:
+                            pass
+                        await asyncio.sleep(wait)
+                        continue
+                    else:
+                        err_detail = resp.text[:200]
+                        errors.append(f"{username}/{protocol}: HTTP {resp.status_code} - {err_detail}")
+                        break
+                except Exception as e:
+                    errors.append(f"{username}/{protocol}: {str(e)}")
+                    break
 
     # Save donations to tracking file
     if donated:
