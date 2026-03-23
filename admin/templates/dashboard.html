@@ -583,11 +583,21 @@
 
         /* Responsive */
         @media (max-width: 640px) {
-            .shell { padding: 1rem; }
+            .shell { padding: 0.75rem; }
             .stats { flex-direction: column; }
             .stat:first-child { border-radius: 6px 6px 0 0; }
             .stat:last-child { border-radius: 0 0 6px 6px; }
             .svc-grid { grid-template-columns: 1fr; }
+            .section-body { padding: 0.5rem; overflow-x: auto; }
+            table { min-width: 480px; }
+            .create-form, .donate-form { flex-direction: column; align-items: stretch; }
+            .create-form input[type="text"],
+            .create-form input[type="number"],
+            .donate-form input[type="text"],
+            .donate-form input[type="number"] { width: 100% !important; }
+            .proto-checks { flex-wrap: wrap; }
+            .section-head { flex-wrap: wrap; gap: 0.5rem; }
+            .tag { font-size: 0.55rem; padding: 0.05rem 0.3rem; margin-bottom: 0.15rem; }
         }
     </style>
 </head>
@@ -751,6 +761,23 @@
                 </table>
             </div>
         </div>
+        {% else %}
+        <div class="section collapsed" id="mahsa-section">
+            <div class="section-head">
+                <h2>MahsaNet</h2>
+                <button class="collapse-btn" onclick="toggleSection('mahsa-section')">expand</button>
+            </div>
+            <div class="section-summary">
+                <span style="color:var(--text-dim);font-size:0.75rem;">Not configured</span>
+            </div>
+            <div class="section-body">
+                <p style="color:var(--text-dim);font-size:0.8rem;line-height:1.6;">
+                    Donate VPN configs to <a href="https://www.mahsaserver.com/" target="_blank" style="color:var(--blue);">Mahsa VPN</a> (2M+ users in Iran).<br>
+                    Setup: run <code style="background:var(--surface2);padding:0.15rem 0.4rem;border-radius:3px;">moav donate setup</code> and get your API key from
+                    <a href="https://www.mahsaserver.com/login/" target="_blank" style="color:var(--blue);">mahsaserver.com</a>.
+                </p>
+            </div>
+        </div>
         {% endif %}
 
         <!-- Users -->
@@ -877,8 +904,14 @@
         }
 
         function toggleCreatePanel() {
+            const section = document.getElementById('users-section');
             const panel = document.getElementById('create-panel');
             const btn = event.target;
+            // Expand section first if collapsed
+            if (section.classList.contains('collapsed')) {
+                section.classList.remove('collapsed');
+                section.querySelector('.collapse-btn').textContent = 'collapse';
+            }
             panel.classList.toggle('open');
             panelOpen = panel.classList.contains('open');
             btn.textContent = panelOpen ? '- Close' : '+ New';
@@ -944,8 +977,14 @@
         {% if mahsanet_configured %}
         /* MahsaNet donation functions */
         function toggleDonatePanel() {
+            const section = document.getElementById('mahsa-section');
             const panel = document.getElementById('donate-panel');
             const btn = event.target;
+            // Expand section first if collapsed
+            if (section.classList.contains('collapsed')) {
+                section.classList.remove('collapsed');
+                section.querySelector('.collapse-btn').textContent = 'collapse';
+            }
             panel.classList.toggle('open');
             btn.textContent = panel.classList.contains('open') ? '- Close' : '+ Donate';
         }
