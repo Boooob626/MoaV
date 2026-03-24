@@ -464,6 +464,7 @@
         .donate-form input:focus { outline: none; border-color: var(--blue); }
         .proto-checks {
             display: flex;
+            flex-wrap: wrap;
             gap: 0.5rem;
             align-items: center;
             padding-bottom: 0.25rem;
@@ -583,11 +584,22 @@
 
         /* Responsive */
         @media (max-width: 640px) {
-            .shell { padding: 1rem; }
+            .shell { padding: 0.75rem; }
             .stats { flex-direction: column; }
             .stat:first-child { border-radius: 6px 6px 0 0; }
             .stat:last-child { border-radius: 0 0 6px 6px; }
             .svc-grid { grid-template-columns: 1fr; }
+            .section-body { padding: 0.5rem; overflow-x: auto; }
+            table { min-width: 480px; }
+            .create-form, .donate-form { flex-direction: column; align-items: stretch; }
+            .create-form input[type="text"],
+            .create-form input[type="number"],
+            .donate-form input[type="text"],
+            .donate-form input[type="number"] { width: 100% !important; }
+            .proto-checks { flex-wrap: wrap; gap: 0.3rem; }
+            .donate-form > div, .create-panel { max-width: 100%; overflow: hidden; }
+            .section-head { flex-wrap: wrap; gap: 0.5rem; }
+            .tag { font-size: 0.55rem; padding: 0.05rem 0.3rem; margin-bottom: 0.15rem; }
         }
     </style>
 </head>
@@ -751,6 +763,23 @@
                 </table>
             </div>
         </div>
+        {% else %}
+        <div class="section collapsed" id="mahsa-section">
+            <div class="section-head">
+                <h2>MahsaNet</h2>
+                <button class="collapse-btn" onclick="toggleSection('mahsa-section')">expand</button>
+            </div>
+            <div class="section-summary">
+                <span style="color:var(--text-dim);font-size:0.75rem;">Not configured</span>
+            </div>
+            <div class="section-body">
+                <p style="color:var(--text-dim);font-size:0.8rem;line-height:1.6;">
+                    Donate VPN configs to <a href="https://www.mahsaserver.com/" target="_blank" style="color:var(--blue);">Mahsa VPN</a> (2M+ users in Iran).<br>
+                    Setup: run <code style="background:var(--surface2);padding:0.15rem 0.4rem;border-radius:3px;">moav donate setup</code> and get your API key from
+                    <a href="https://www.mahsaserver.com/login/" target="_blank" style="color:var(--blue);">mahsaserver.com</a>.
+                </p>
+            </div>
+        </div>
         {% endif %}
 
         <!-- Users -->
@@ -816,7 +845,9 @@
                             {% if user.has_cdn %}<span class="tag">CDN</span>{% endif %}
                             {% if user.has_wireguard %}<span class="tag">WG</span>{% endif %}
                             {% if user.has_amneziawg %}<span class="tag">AWG</span>{% endif %}
+                            {% if user.has_xhttp %}<span class="tag">XHTTP</span>{% endif %}
                             {% if user.has_trusttunnel %}<span class="tag">TT</span>{% endif %}
+                            {% if user.has_xdns %}<span class="tag">XDNS</span>{% endif %}
                             {% if user.has_telemt %}<span class="tag">MTProxy</span>{% endif %}
                             {% if user.has_dnstt %}<span class="tag">dnstt</span>{% endif %}
                             {% if user.has_slipstream %}<span class="tag">Slip</span>{% endif %}
@@ -872,14 +903,31 @@
         function toggleSection(id) {
             const section = document.getElementById(id);
             const btn = section.querySelector('.collapse-btn');
+            // Close any open panels before collapsing
+            if (!section.classList.contains('collapsed')) {
+                const openPanel = section.querySelector('.create-panel.open');
+                if (openPanel) {
+                    openPanel.classList.remove('open');
+                    // Reset the toggle button text
+                    const panelBtn = section.querySelector('.btn-green');
+                    if (panelBtn) {
+                        panelBtn.textContent = panelBtn.textContent.includes('Close') ? '+ Donate' : '+ New';
+                    }
+                }
+            }
             section.classList.toggle('collapsed');
             btn.textContent = section.classList.contains('collapsed') ? 'expand' : 'collapse';
         }
 
         function toggleCreatePanel() {
+            const section = document.getElementById('users-section');
             const panel = document.getElementById('create-panel');
             const btn = event.target;
             panel.classList.toggle('open');
+            if (panel.classList.contains('open') && section.classList.contains('collapsed')) {
+                section.classList.remove('collapsed');
+                section.querySelector('.collapse-btn').textContent = 'collapse';
+            }
             panelOpen = panel.classList.contains('open');
             btn.textContent = panelOpen ? '- Close' : '+ New';
         }
@@ -944,10 +992,16 @@
         {% if mahsanet_configured %}
         /* MahsaNet donation functions */
         function toggleDonatePanel() {
+            const section = document.getElementById('mahsa-section');
             const panel = document.getElementById('donate-panel');
             const btn = event.target;
             panel.classList.toggle('open');
-            btn.textContent = panel.classList.contains('open') ? '- Close' : '+ Donate';
+            const isOpen = panel.classList.contains('open');
+            btn.textContent = isOpen ? '- Close' : '+ Donate';
+            if (isOpen && section.classList.contains('collapsed')) {
+                section.classList.remove('collapsed');
+                section.querySelector('.collapse-btn').textContent = 'collapse';
+            }
         }
 
         function showDonateResult(cls, text) {

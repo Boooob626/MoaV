@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-03-24
+
+### Added
+- **Telemt teardown monitoring** — New Grafana dashboard panels for ME writer teardowns (attempts by reason/mode, success rate, escalations, duration) and exporter metrics from telemt 3.3.27+ API
+- **CloudFront troubleshooting** — Diagnostic steps and fix commands for `bad "Sec-WebSocket-Key" header` errors in `docs/TROUBLESHOOTING.md` and `docs/DNS.md`
+- **Xray and WireGuard in admin dashboard** — Services grid now includes xray (XHTTP/XDNS) and wireguard; users table shows XHTTP and XDNS protocol tags
+- **MahsaNet setup prompt** — Admin dashboard shows collapsed setup section with instructions when MahsaNet API key is not configured
+- **Happ client** — Added to all platform client app tables on website and READMEs
+
+### Changed
+- **Telemt** — Updated from 3.3.23 to 3.3.28
+- **MahsaNet donation rate limiting** — Admin dashboard now pauses every 8 API calls and retries on HTTP 429 with extracted wait time (matches CLI behavior)
+- **Admin dashboard mobile layout** — Users table horizontally scrollable, forms stack vertically, protocol checkboxes wrap
+- **Admin collapse/panel behavior** — Collapsing a section auto-closes any open create/donate panel; panels expand section when opened
+- **README cleanup** — Both EN and FA READMEs updated with current commands (`doctor`, `donate`, `admin password`), removed verbose sections, added admin credentials note
+- **Website metadata** — Updated to 16+ protocols, added XDNS/FinalMask/Happ to SEO, version bumped to 1.7.3
+- **CloudFront docs** — Added `CDN_TRANSPORT=ws` requirement warning, origin/viewer protocol clarification, fix-existing-distribution CLI commands
+
+### Fixed
+- **Admin user creation permission error** ([#85](https://github.com/shayanb/MoaV/issues/85)) — `configs/sing-box/` and other config directories now get `chmod a+rwX` in admin entrypoint; `user-add.sh` uses `su-exec root` fallback when `sudo` is unavailable (admin container)
+- **MahsaNet donate panel hidden when collapsed** — Panel CSS exclusion and section auto-expand on toggle
+
 ## [1.7.2] - 2026-03-22
 
 ### Added
@@ -900,7 +922,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uTLS fingerprint spoofing (Chrome)
 - Automatic short ID generation for Reality
 
-[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.7.2...HEAD
+[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.7.3...HEAD
+[1.7.3]: https://github.com/shayanb/MoaV/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/shayanb/MoaV/compare/v1.7.0...v1.7.2
 [1.7.0]: https://github.com/shayanb/MoaV/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/shayanb/MoaV/compare/v1.6.1...v1.6.2

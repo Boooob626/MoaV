@@ -158,23 +158,29 @@ CREATED_USERS=()
 FAILED_USERS=()
 
 # Ensure directories exist and are writable (Docker creates them as root)
-for _dir in "outputs/bundles" "state/users" "configs/amneziawg" "configs/wireguard"; do
-    mkdir -p "$_dir" 2>/dev/null || sudo mkdir -p "$_dir" 2>/dev/null || true
-    if [[ ! -w "$_dir" ]]; then
-        if command -v sudo &>/dev/null; then
-            sudo chmod 777 "$_dir" 2>/dev/null || true
-        fi
+# Try: direct mkdir → sudo mkdir → su-exec root mkdir (admin container has su-exec)
+_fix_perms() {
+    local dir="$1"
+    mkdir -p "$dir" 2>/dev/null || \
+        sudo mkdir -p "$dir" 2>/dev/null || \
+        su-exec root mkdir -p "$dir" 2>/dev/null || true
+    if [[ -d "$dir" ]] && [[ ! -w "$dir" ]]; then
+        sudo chmod 777 "$dir" 2>/dev/null || \
+            su-exec root chmod 777 "$dir" 2>/dev/null || true
     fi
+}
+
+for _dir in "outputs/bundles" "state/users" "configs/sing-box" "configs/xray" "configs/amneziawg" "configs/wireguard" "configs/trusttunnel" "configs/telemt"; do
+    _fix_perms "$_dir"
 done
 # Also fix state/ parent and config files that may be root-owned
 for _dir in "state" "configs/amneziawg" "configs/wireguard"; do
-    if [[ -d "$_dir" ]] && [[ ! -w "$_dir" ]]; then
-        sudo chmod 777 "$_dir" 2>/dev/null || true
-    fi
+    _fix_perms "$_dir"
     # Fix root-owned config files so we can append peers
     for _f in "$_dir"/*.conf; do
         if [[ -f "$_f" ]] && [[ ! -w "$_f" ]]; then
-            sudo chmod 666 "$_f" 2>/dev/null || true
+            sudo chmod 666 "$_f" 2>/dev/null || \
+                su-exec root chmod 666 "$_f" 2>/dev/null || true
         fi
     done
 done

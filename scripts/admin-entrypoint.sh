@@ -25,9 +25,12 @@ else
     echo "[admin] SSL: Disabled (no certificates found)"
 fi
 
-# Ensure required directories exist and fix ownership (may be root-owned from Docker)
+# Ensure required directories exist and are writable by moav user
+# Use chmod 777 instead of chown — more reliable across Docker volume mount scenarios
 mkdir -p /project/outputs/bundles /project/state/users /project/configs/amneziawg /project/configs/wireguard 2>/dev/null || true
 chown -R moav:moav /project/outputs /project/configs /project/state 2>/dev/null || true
+chmod -R a+rwX /project/outputs /project/state 2>/dev/null || true
+chmod -R a+rwX /project/configs/sing-box /project/configs/xray /project/configs/amneziawg /project/configs/wireguard /project/configs/trusttunnel /project/configs/telemt 2>/dev/null || true
 
 # Run the dashboard as non-root
 echo "[admin] Starting uvicorn server..."

@@ -1,6 +1,6 @@
 # MoaV
 
-[![Website](https://img.shields.io/badge/website-moav.sh-cyan.svg)](https://moav.sh)  [![Docs](https://img.shields.io/badge/docs-moav.sh%2Fdocs-cyan.svg)](https://moav.sh/docs/)  [![Version](https://img.shields.io/badge/version-1.7.2-blue.svg)](CHANGELOG.md)  [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/website-moav.sh-cyan.svg)](https://moav.sh)  [![Docs](https://img.shields.io/badge/docs-moav.sh%2Fdocs-cyan.svg)](https://moav.sh/docs/)  [![Version](https://img.shields.io/badge/version-1.7.3-blue.svg)](CHANGELOG.md)  [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 English | **[فارسی](README-fa.md)** 
 
@@ -54,20 +54,15 @@ nano .env  # Set DOMAIN, ACME_EMAIL, ADMIN_PASSWORD
 
 ```bash
 moav                      # Interactive menu
+moav start                # Start services
+moav status               # Show service status
+moav user add alice       # Add user (generates configs + QR codes)
+moav user add --batch 10  # Batch create users
+moav donate               # Donate configs to MahsaNet/Psiphon/Snowflake
+moav doctor               # Run diagnostics (DNS, ports, services)
+moav update               # Update MoaV
+moav admin password       # Reset admin/Grafana password
 moav help                 # Show all commands
-moav start                # Start all services
-moav stop                 # Stop all services
-moav logs                 # View logs
-moav update               # Update MoaV (git pull)
-moav user add joe         # Add user
-```
-
-**Manual docker commands** (alternative):
-
-```bash
-docker compose --profile all build                 # Build all images
-docker compose --profile setup run --rm bootstrap  # Initialize
-docker compose --profile all up -d                 # Start all services
 ```
 
 See the [Setup Guide](docs/SETUP.md) for complete instructions, the [CLI Reference](docs/CLI.md) for all commands, or browse the [full documentation](https://moav.sh/docs/).
@@ -139,55 +134,46 @@ See the [Setup Guide](docs/SETUP.md) for complete instructions, the [CLI Referen
 | DNS Tunnel (dnstt) | 53/udp | ★★★☆☆ | ★☆☆☆☆ | Last resort, hard to block |
 | Slipstream | 53/udp | ★★★☆☆ | ★★☆☆☆ | QUIC-over-DNS, 1.5-5x faster than dnstt |
 | Telegram MTProxy | 993/tcp | ★★★★☆ | ★★★☆☆ | Fake-TLS V2, direct Telegram access |
-| XHTTP (VLESS+XHTTP+Reality) | 2096/tcp | ★★★★★ | ★★★★☆ | Xray-core, experimental, no domain needed |
-| Psiphon | - | ★★★★☆ | ★★★☆☆ | Standalone, no server needed |
-| Tor (Snowflake) | - | ★★★★☆ | ★★☆☆☆ | Standalone, uses Tor network |
+| XHTTP (VLESS+XHTTP+Reality) | 2096/tcp | ★★★★★ | ★★★★☆ | Xray-core, no domain needed |
+| XDNS (VLESS+mKCP+DNS) | 53/udp | ★★★☆☆ | ★☆☆☆☆ | DNS tunnel via Xray FinalMask, works during heavy shutdowns |
+| Psiphon Conduit | - | - | - | Donate bandwidth to Psiphon (2M+ users) |
+| Tor Snowflake | - | - | - | Donate bandwidth to Tor network |
+| MahsaNet | - | - | - | Donate VPN configs to Mahsa VPN (2M+ users) |
 
 ## User Management
 
 ```bash
-# Using moav (recommended)
-moav user list            # List all users (or: moav users)
-moav user add joe         # Add user to all services
+moav user list            # List all users
+moav user add joe         # Add user to all protocols
 moav user add alice bob   # Add multiple users
-moav user add --batch 5   # Batch create user01..user05
-moav user revoke joe      # Revoke user from all services
+moav user add --batch 10 --prefix team  # Batch create team01..team10
+moav user revoke joe      # Revoke user
+moav user package joe     # Create zip bundle
 ```
 
-**Manual scripts** (for advanced use):
+Each user gets a bundle in `outputs/bundles/<username>/` with config files, QR codes, and a README.html guide.
 
-```bash
-# Add to specific services only
-./scripts/singbox-user-add.sh joe     # Reality, Trojan, Hysteria2
-./scripts/wg-user-add.sh joe          # WireGuard only
+**Download bundles** from the admin dashboard at `https://your-server:9443` or via SCP.
 
-# Revoke from specific services only
-./scripts/singbox-user-revoke.sh joe
-./scripts/wg-user-revoke.sh joe
-```
+## Admin Dashboard & Monitoring
 
-User bundles are generated in `outputs/bundles/<username>/` containing:
-- Config files for each protocol
-- QR codes for mobile import
-- README with connection instructions
-
-**Download bundles:**
-<!-- TODO: Screenshot of admin dashboard showing user bundles section -->
-- **Admin dashboard** - Visit `https://your-server:9443`, login, and download from "User Bundles" section
-- **SCP** - `scp root@SERVER:/opt/moav/outputs/bundles/username.zip ./`
+- **Admin dashboard**: `https://your-server:9443` — user management, service status, MahsaNet donations
+- **Grafana**: `https://your-server:9444` — per-user traffic, protocol breakdown, GeoIP distribution
+- **Username**: `admin` | **Password**: set during install (stored in `.env` as `ADMIN_PASSWORD`)
+- **Reset password**: `moav admin password`
 
 ## Service Management
 
 ```bash
 moav status               # Show all service status
-moav start                # Start all services
+moav start                # Start services
 moav start proxy admin    # Start specific profiles
 moav stop                 # Stop all services
-moav stop conduit         # Stop specific service
 moav restart sing-box     # Restart specific service
-moav logs                 # View all logs (follow mode)
-moav logs conduit         # View specific service logs
-moav build                # Build/rebuild all containers
+moav logs sing-box        # View service logs
+moav doctor               # Run diagnostics
+moav doctor dns           # Check DNS configuration
+moav donate               # Donate configs to MahsaNet/Psiphon/Snowflake
 ```
 
 **Profiles:** `proxy`, `wireguard`, `amneziawg`, `dnstunnel`, `trusttunnel`, `telegram`, `xhttp`, `admin`, `conduit`, `snowflake`, `monitoring`, `all`
@@ -208,62 +194,23 @@ moav start                         # Start services
 
 See [docs/SETUP.md](docs/SETUP.md#server-migration) for detailed migration workflow.
 
-## Testing & Client
-
-MoaV includes a built-in client container for testing connectivity and connecting through your server.
-
-### Test Mode
-
-Verify that all protocols are working for a user:
+## Testing
 
 ```bash
-moav test user1           # Test all protocols for user1
-moav test user1 --json    # Output results as JSON
-```
-
-Tests Reality, Trojan, Hysteria2, TrustTunnel, WireGuard, AmneziaWG, dnstt, Slipstream, and Telegram MTProxy. Reports pass/fail/skip for each protocol.
-
-### Client Mode
-
-Use MoaV as a client to connect through your server (runs SOCKS5/HTTP proxy locally):
-
-```bash
-moav client connect user1              # Auto-detect best protocol
-moav client connect user1 --protocol reality   # Force specific protocol
-moav client connect user1 --protocol hysteria2
-```
-
-The client exposes:
-- SOCKS5 proxy on port 1080 (configurable via `CLIENT_SOCKS_PORT`)
-- HTTP proxy on port 8080 (configurable via `CLIENT_HTTP_PORT`)
-
-Available protocols: `reality`, `trojan`, `hysteria2`, `trusttunnel`, `wireguard`, `dnstt`, `slipstream`, `psiphon`, `tor`
-
-Build the client image separately:
-```bash
-moav client build
-```
-
-**Service aliases:** `conduit`→psiphon-conduit, `singbox`→sing-box, `wg`→wireguard, `dns/dnstt/slip`→dnstunnel, `tg/mtproxy`→telemt
-
-## Conduit Management
-
-If running Psiphon Conduit to donate bandwidth:
-
-```bash
-moav logs conduit             # View conduit logs (Ryve link shown on startup)
-./scripts/conduit-info.sh     # Get Ryve deep link for mobile import
+moav test user1           # Test all protocols for a user
+moav test user1 -v        # Verbose output for debugging
+moav client connect user1 # Connect as user (exposes local SOCKS5/HTTP proxy)
 ```
 
 ## Client Apps
 
 | Platform | Recommended Apps |
 |----------|------------------|
-| iOS | Streisand, Hiddify, WireGuard, TrustTunnel, Psiphon, Shadowrocket |
-| Android | v2rayNG, Hiddify, WireGuard, TrustTunnel, Psiphon, NekoBox |
-| macOS | Hiddify, Streisand, WireGuard, TrustTunnel, Psiphon |
-| Windows | v2rayN, Hiddify, WireGuard, TrustTunnel, Psiphon |
-| Linux | Hiddify, sing-box, WireGuard, TrustTunnel |
+| iOS | Happ, Streisand, Hiddify, WireGuard, Shadowrocket |
+| Android | Happ, v2rayNG, Hiddify, WireGuard, NekoBox |
+| macOS | Happ, Hiddify, Streisand, WireGuard |
+| Windows | Happ, v2rayN, Hiddify, WireGuard |
+| Linux | Hiddify, sing-box, WireGuard |
 
 See [docs/CLIENTS.md](docs/CLIENTS.md) for complete list and setup instructions.
 

@@ -104,6 +104,59 @@ def poll_telemt_api():
                         rtt if isinstance(rtt, (int, float)) else 0
                     )
 
+            # Teardown metrics (added in telemt 3.3.27+)
+            teardown = quality.get("teardown", {})
+            if teardown:
+                # Attempt counts by reason and mode
+                attempts = teardown.get("attempts", {})
+                if isinstance(attempts, dict):
+                    for reason, modes in attempts.items():
+                        if isinstance(modes, dict):
+                            for mode, count in modes.items():
+                                key = f'telemt_api_teardown_attempts_total{{reason="{reason}",mode="{mode}"}}'
+                                new_metrics[key] = ("counter", "ME writer teardown attempts", count)
+                        elif isinstance(modes, (int, float)):
+                            key = f'telemt_api_teardown_attempts_total{{reason="{reason}"}}'
+                            new_metrics[key] = ("counter", "ME writer teardown attempts", modes)
+
+                # Success counts by mode
+                success = teardown.get("success", {})
+                if isinstance(success, dict):
+                    for mode, count in success.items():
+                        key = f'telemt_api_teardown_success_total{{mode="{mode}"}}'
+                        new_metrics[key] = ("counter", "ME writer teardown successes", count)
+
+                # Scalar counters
+                for field, metric_name, help_text in [
+                    ("timeout_total", "telemt_api_teardown_timeout_total", "ME writer teardown timeouts"),
+                    ("escalation_total", "telemt_api_teardown_escalation_total", "ME writer teardown escalations"),
+                    ("noop_total", "telemt_api_teardown_noop_total", "ME writer teardown no-ops"),
+                ]:
+                    val = teardown.get(field, 0)
+                    if val:
+                        new_metrics[metric_name] = ("counter", help_text, val)
+
+                # Cleanup side effect failures
+                cleanup = teardown.get("cleanup_failures", {})
+                if isinstance(cleanup, dict):
+                    for step, count in cleanup.items():
+                        key = f'telemt_api_cleanup_failures_total{{step="{step}"}}'
+                        new_metrics[key] = ("counter", "ME writer cleanup side effect failures", count)
+
+                # Duration stats
+                duration = teardown.get("duration", {})
+                if isinstance(duration, dict):
+                    dur_sum = duration.get("sum", 0)
+                    dur_count = duration.get("count", 0)
+                    if dur_count > 0:
+                        new_metrics["telemt_api_teardown_duration_seconds_sum"] = (
+                            "gauge", "Total teardown duration in seconds", dur_sum)
+                        new_metrics["telemt_api_teardown_duration_seconds_count"] = (
+                            "gauge", "Number of teardown operations", dur_count)
+                        new_metrics["telemt_api_teardown_duration_seconds_avg"] = (
+                            "gauge", "Average teardown duration in seconds",
+                            dur_sum / dur_count if dur_count else 0)
+
         # --- Upstream Quality ---
         upstream = safe_get(f"{TELEMT_API}/v1/runtime/upstream_quality")
         if upstream:
