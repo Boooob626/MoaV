@@ -42,4 +42,4 @@ docker run --rm \
     -e "JSON_MODE=$JSON_MODE" \
     -e "SINCE=$SINCE" \
     -e "LOGFILE=/logs.txt" \
-    python:3.11-alpine sh -c "pip install -q maxminddb 2>/dev/null; python3 /inspect.py"
+    python:3.11-alpine sh -c "pip install -q --disable-pip-version-check maxminddb >/dev/null 2>&1 && python3 /inspect.py"
