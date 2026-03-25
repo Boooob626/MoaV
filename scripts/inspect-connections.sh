@@ -35,7 +35,7 @@ echo "  Fetched $(wc -l < "$LOGFILE") log lines (last $SINCE)"
 # Run Python inside a container with GeoIP + the script + logs all mounted as files
 docker run --rm \
     -v "$LOGFILE:/logs.txt:ro" \
-    -v "$(pwd)/scripts/inspect-connections.py:/inspect.py:ro" \
+    -v "$(pwd)/scripts/inspect-connections.py:/opt/moav-inspect.py:ro" \
     -v "$(pwd)/exporters/lib/geoip.py:/geoip_module.py:ro" \
     -v moav_moav_geoip:/geoip:ro \
     -e "FILTER=$FILTER" \
@@ -44,5 +44,5 @@ docker run --rm \
     -e "LOGFILE=/logs.txt" \
     python:3.11-alpine sh -c '
 pip install --quiet --disable-pip-version-check maxminddb 2>/dev/null 1>/dev/null
-exec python3 /inspect.py
+exec python3 /opt/moav-inspect.py
 '
