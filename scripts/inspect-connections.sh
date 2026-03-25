@@ -25,13 +25,16 @@ for arg in "$@"; do
     esac
 done
 
-# Base64 encode the Python script to avoid all shell escaping issues
-B64SCRIPT=$(base64 < "$SCRIPT_DIR/inspect-connections.py")
-
+# Run Python script inside singbox-exporter (has GeoIP + network access)
+# Mount the script via docker run with --volumes-from to access GeoIP data
+# Use a temporary container that shares the geoip volume
 docker logs moav-sing-box --since "$SINCE" 2>&1 | \
-    docker exec -i \
+    docker run --rm -i \
+    --network moav_moav_net \
+    -v moav_moav_geoip:/geoip:ro \
+    -v "$(pwd)/scripts/inspect-connections.py:/inspect.py:ro" \
+    -v "$(pwd)/exporters/singbox:/app:ro" \
     -e "FILTER=$FILTER" \
     -e "JSON_MODE=$JSON_MODE" \
     -e "SINCE=$SINCE" \
-    -e "B64SCRIPT=$B64SCRIPT" \
-    moav-singbox-exporter sh -c 'echo "$B64SCRIPT" | base64 -d | python3 /dev/stdin'
+    python:3.11-alpine python3 /inspect.py
