@@ -9,10 +9,13 @@ filter_country = os.environ.get("FILTER", "").upper()
 json_mode = os.environ.get("JSON_MODE", "") == "true"
 since = os.environ.get("SINCE", "6h")
 
-sys.path.insert(0, "/app")
+# Import GeoIP module (mounted as /geoip_module.py to avoid path conflicts)
 try:
-    from geoip import GeoIPLookup
-    geo = GeoIPLookup()
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("geoip", "/geoip_module.py")
+    geoip_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(geoip_mod)
+    geo = geoip_mod.GeoIPLookup()
 except Exception:
     geo = None
     print("WARNING: GeoIP not available", file=sys.stderr)

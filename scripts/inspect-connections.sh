@@ -36,7 +36,7 @@ echo "  Fetched $(wc -l < "$LOGFILE") log lines (last $SINCE)"
 docker run --rm \
     -v "$LOGFILE:/logs.txt:ro" \
     -v "$(pwd)/scripts/inspect-connections.py:/inspect.py:ro" \
-    -v "$(pwd)/exporters/lib:/app:ro" \
+    -v "$(pwd)/exporters/lib/geoip.py:/geoip_module.py:ro" \
     -v moav_moav_geoip:/geoip:ro \
     -e "FILTER=$FILTER" \
     -e "JSON_MODE=$JSON_MODE" \
