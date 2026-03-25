@@ -36,10 +36,10 @@ echo "  Fetched $(wc -l < "$LOGFILE") log lines (last $SINCE)"
 docker run --rm \
     -v "$LOGFILE:/logs.txt:ro" \
     -v "$(pwd)/scripts/inspect-connections.py:/inspect.py:ro" \
-    -v "$(pwd)/exporters/singbox:/app:ro" \
+    -v "$(pwd)/exporters/lib:/app:ro" \
     -v moav_moav_geoip:/geoip:ro \
     -e "FILTER=$FILTER" \
     -e "JSON_MODE=$JSON_MODE" \
     -e "SINCE=$SINCE" \
     -e "LOGFILE=/logs.txt" \
-    python:3.11-alpine python3 /inspect.py
+    python:3.11-alpine sh -c "pip install -q maxminddb 2>/dev/null; python3 /inspect.py"
