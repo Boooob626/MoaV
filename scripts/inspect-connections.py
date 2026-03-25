@@ -38,6 +38,9 @@ conn_user = {}
 conn_inbound = {}
 conn_error = set()
 
+# Strip ANSI escape codes (sing-box logs include color codes)
+ansi_re = re.compile(r'\x1b\[[0-9;]*m')
+
 # Read from mounted log file or stdin
 logfile = os.environ.get("LOGFILE", "")
 if logfile and os.path.exists(logfile):
@@ -45,8 +48,8 @@ if logfile and os.path.exists(logfile):
 else:
     source = sys.stdin
 
-for line in source:
-    line = line.strip()
+for raw_line in source:
+    line = ansi_re.sub("", raw_line).strip()
     cid_match = conn_id_re.search(line)
     if not cid_match:
         continue
