@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 
 filter_country = os.environ.get("FILTER", "").upper()
 json_mode = os.environ.get("JSON_MODE", "") == "true"
+csv_mode = os.environ.get("CSV_MODE", "") == "true"
 since = os.environ.get("SINCE", "6h")
 
 # Import GeoIP module (mounted as /geoip_module.py to avoid path conflicts)
@@ -124,6 +125,17 @@ if json_mode:
         }
     json.dump({"filter": filter_country or "all", "since": since, "ips": out}, sys.stdout, indent=2)
     print()
+    sys.exit(0)
+
+if csv_mode:
+    import csv
+    writer = csv.writer(sys.stdout)
+    writer.writerow(["ip", "country", "connections", "errors", "user", "inbounds", "destinations"])
+    for ip, info in sorted(ip_stats.items(), key=lambda x: -x[1]["conns"]):
+        top_user = info["users"].most_common(1)[0][0] if info["users"] else ""
+        ib_str = " | ".join("%s:%d" % (k, v) for k, v in info["inbounds"].most_common())
+        dest_str = " | ".join("%s (%d)" % (d, n) for d, n in info["destinations"].most_common())
+        writer.writerow([ip, info["country"], info["conns"], info["errors"], top_user, ib_str, dest_str])
     sys.exit(0)
 
 label = " from %s" % filter_country if filter_country else ""

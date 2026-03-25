@@ -7,6 +7,7 @@
 #   ./scripts/inspect-connections.sh IR            # Filter by country
 #   ./scripts/inspect-connections.sh IR 24h        # Last 24 hours
 #   ./scripts/inspect-connections.sh --json        # JSON output
+#   ./scripts/inspect-connections.sh IR --csv     # CSV output (pipe to file)
 # =============================================================================
 
 set -euo pipefail
@@ -17,9 +18,11 @@ cd "$SCRIPT_DIR/.."
 FILTER=""
 SINCE="6h"
 JSON_MODE=false
+CSV_MODE=false
 for arg in "$@"; do
     case "$arg" in
         --json) JSON_MODE=true ;;
+        --csv) CSV_MODE=true ;;
         [0-9]*h|[0-9]*m|[0-9]*s) SINCE="$arg" ;;
         *) FILTER="$arg" ;;
     esac
@@ -40,6 +43,7 @@ docker run --rm \
     -v moav_moav_geoip:/geoip:ro \
     -e "FILTER=$FILTER" \
     -e "JSON_MODE=$JSON_MODE" \
+    -e "CSV_MODE=$CSV_MODE" \
     -e "SINCE=$SINCE" \
     -e "LOGFILE=/logs.txt" \
     python:3.11-alpine sh -c '
