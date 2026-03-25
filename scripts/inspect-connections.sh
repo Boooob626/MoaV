@@ -25,12 +25,14 @@ for arg in "$@"; do
     esac
 done
 
-# Save logs to temp file, mount into container alongside script + geoip
+# Save logs to temp file (> file 2>&1 captures both stdout AND stderr)
 LOGFILE=$(mktemp /tmp/moav-logs-XXXXXX.txt)
 trap "rm -f $LOGFILE" EXIT
+docker logs moav-sing-box --since "$SINCE" > "$LOGFILE" 2>&1
 
-docker logs moav-sing-box --since "$SINCE" 2>&1 > "$LOGFILE"
+echo "  Fetched $(wc -l < "$LOGFILE") log lines (last $SINCE)"
 
+# Run Python inside a container with GeoIP + the script + logs all mounted as files
 docker run --rm \
     -v "$LOGFILE:/logs.txt:ro" \
     -v "$(pwd)/scripts/inspect-connections.py:/inspect.py:ro" \
@@ -39,4 +41,5 @@ docker run --rm \
     -e "FILTER=$FILTER" \
     -e "JSON_MODE=$JSON_MODE" \
     -e "SINCE=$SINCE" \
-    python:3.11-alpine python3 /inspect.py < "$LOGFILE"
+    -e "LOGFILE=/logs.txt" \
+    python:3.11-alpine python3 /inspect.py

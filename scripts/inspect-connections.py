@@ -38,7 +38,14 @@ conn_user = {}
 conn_inbound = {}
 conn_error = set()
 
-for line in sys.stdin:
+# Read from mounted log file or stdin
+logfile = os.environ.get("LOGFILE", "")
+if logfile and os.path.exists(logfile):
+    source = open(logfile, "r")
+else:
+    source = sys.stdin
+
+for line in source:
     line = line.strip()
     cid_match = conn_id_re.search(line)
     if not cid_match:
