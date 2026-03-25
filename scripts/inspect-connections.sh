@@ -25,16 +25,18 @@ for arg in "$@"; do
     esac
 done
 
-# Run Python script inside singbox-exporter (has GeoIP + network access)
-# Mount the script via docker run with --volumes-from to access GeoIP data
-# Use a temporary container that shares the geoip volume
-docker logs moav-sing-box --since "$SINCE" 2>&1 | \
-    docker run --rm -i \
-    --network moav_moav_net \
-    -v moav_moav_geoip:/geoip:ro \
+# Save logs to temp file, mount into container alongside script + geoip
+LOGFILE=$(mktemp /tmp/moav-logs-XXXXXX.txt)
+trap "rm -f $LOGFILE" EXIT
+
+docker logs moav-sing-box --since "$SINCE" 2>&1 > "$LOGFILE"
+
+docker run --rm \
+    -v "$LOGFILE:/logs.txt:ro" \
     -v "$(pwd)/scripts/inspect-connections.py:/inspect.py:ro" \
     -v "$(pwd)/exporters/singbox:/app:ro" \
+    -v moav_moav_geoip:/geoip:ro \
     -e "FILTER=$FILTER" \
     -e "JSON_MODE=$JSON_MODE" \
     -e "SINCE=$SINCE" \
-    python:3.11-alpine python3 /inspect.py
+    python:3.11-alpine python3 /inspect.py < "$LOGFILE"
