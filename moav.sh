@@ -769,8 +769,26 @@ install_completions() {
         done
     fi
 
+    # Also add to .bashrc/.zshrc as fallback (in case bash-completion package isn't installed)
+    local shell_rc=""
+    if [[ -n "${BASH_VERSION:-}" ]]; then
+        shell_rc="$HOME/.bashrc"
+    elif [[ -n "${ZSH_VERSION:-}" ]]; then
+        shell_rc="$HOME/.zshrc"
+    fi
+    if [[ -n "$shell_rc" && -f "$shell_rc" ]]; then
+        local source_line="[[ -f \"$comp_src\" ]] && source \"$comp_src\"  # moav completions"
+        if ! grep -q "moav completions" "$shell_rc" 2>/dev/null; then
+            echo "" >> "$shell_rc"
+            echo "$source_line" >> "$shell_rc"
+        fi
+    fi
+
+    # Source now for the current shell
+    source "$comp_src" 2>/dev/null || true
+
     if [[ "$installed" == "true" ]]; then
-        info "Shell completions installed (restart shell or run: source $comp_src)"
+        success "Shell completions installed (available in this and future sessions)"
     fi
 }
 

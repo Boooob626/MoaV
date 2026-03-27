@@ -13,10 +13,11 @@ _moav() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     cword=$COMP_CWORD
 
-    local commands="help version install uninstall check doctor bootstrap domainless profiles start stop restart status logs users user build test client export import migrate-ip regenerate-users setup-dns update"
-    local services="sing-box decoy wstunnel wireguard amneziawg dns-router dnstt slipstream trusttunnel telemt admin psiphon-conduit snowflake grafana"
-    local profiles="proxy wireguard amneziawg dnstunnel trusttunnel telegram admin conduit snowflake monitoring client all"
-    local protocols="auto reality trojan hysteria2 wireguard psiphon tor dnstt slipstream"
+    local commands="help version install uninstall check doctor bootstrap domainless profiles start stop restart status logs users user admin build test client donate export import migrate-ip regenerate-users setup-dns update"
+    local services="sing-box decoy wstunnel wireguard amneziawg dns-router dnstt slipstream trusttunnel telemt xray admin psiphon-conduit snowflake grafana grafana-proxy prometheus cadvisor node-exporter clash-exporter singbox-exporter telemt-exporter xray-exporter wireguard-exporter amneziawg-exporter snowflake-exporter"
+    local profiles="proxy wireguard amneziawg dnstunnel trusttunnel xhttp telegram admin conduit snowflake monitoring client all"
+    local service_aliases="singbox sing proxy reality wg ws tunnel dns slip tg mtproxy telegram conduit psiphon snow tor grafana-cdn"
+    local protocols="auto reality trojan hysteria2 trusttunnel wireguard psiphon tor dnstt slipstream"
 
     # Resolve moav project directory (follow symlink)
     local moav_dir=""
@@ -48,16 +49,16 @@ _moav() {
 
     case "$cmd" in
         start)
-            COMPREPLY=($(compgen -W "$profiles" -- "$cur"))
+            COMPREPLY=($(compgen -W "$profiles $service_aliases" -- "$cur"))
             ;;
         stop)
-            COMPREPLY=($(compgen -W "$services -r" -- "$cur"))
+            COMPREPLY=($(compgen -W "$services $service_aliases -r" -- "$cur"))
             ;;
         restart)
-            COMPREPLY=($(compgen -W "$services" -- "$cur"))
+            COMPREPLY=($(compgen -W "$services $service_aliases" -- "$cur"))
             ;;
         logs)
-            COMPREPLY=($(compgen -W "$services -n" -- "$cur"))
+            COMPREPLY=($(compgen -W "$services $service_aliases -n" -- "$cur"))
             ;;
         build)
             case "$prev" in
@@ -65,7 +66,7 @@ _moav() {
                     COMPREPLY=($(compgen -W "$services $profiles --local --no-cache" -- "$cur"))
                     ;;
                 --local)
-                    COMPREPLY=($(compgen -W "$services all --no-cache" -- "$cur"))
+                    COMPREPLY=($(compgen -W "cadvisor clash-exporter prometheus grafana node-exporter nginx certbot all --no-cache" -- "$cur"))
                     ;;
                 *)
                     COMPREPLY=($(compgen -W "--no-cache" -- "$cur"))
@@ -79,12 +80,22 @@ _moav() {
             else
                 case "$subcmd" in
                     add)
-                        COMPREPLY=($(compgen -W "--batch --prefix --package -p" -- "$cur"))
+                        COMPREPLY=($(compgen -W "--batch --prefix --package -p $(_moav_users)" -- "$cur"))
                         ;;
                     revoke|rm|remove|delete|package|pkg)
                         COMPREPLY=($(compgen -W "$(_moav_users)" -- "$cur"))
                         ;;
                 esac
+            fi
+            ;;
+        admin)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "password" -- "$cur"))
+            fi
+            ;;
+        donate)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "setup list delete status" -- "$cur"))
             fi
             ;;
         test)
@@ -116,12 +127,15 @@ _moav() {
             COMPREPLY=($(compgen -W "-b --branch" -- "$cur"))
             ;;
         doctor)
-            COMPREPLY=($(compgen -W "docker memory disk dns services config ports env updates all --help -h help" -- "$cur"))
+            COMPREPLY=($(compgen -W "docker memory disk dns services config ports env updates all" -- "$cur"))
             ;;
         uninstall)
             COMPREPLY=($(compgen -W "--wipe" -- "$cur"))
             ;;
         import)
+            COMPREPLY=($(compgen -f -- "$cur"))
+            ;;
+        export)
             COMPREPLY=($(compgen -f -- "$cur"))
             ;;
     esac
