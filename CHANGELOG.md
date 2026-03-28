@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-03-27
+
+### Added
+- **Connection inspector** — `./scripts/inspect-connections.sh` parses sing-box logs with GeoIP country lookup. Filter by country, time range, CSV/JSON export. Shows source IPs, destinations, users, inbounds, error rates per IP
+- **Shell completions auto-install** — `moav install` now adds completions to `.bashrc`/`.zshrc` and sources them immediately (no shell restart needed)
+
+### Changed
+- **Xray-core** — Updated to v26.3.27 (was building from main branch). Now pinned to release tags for reproducible builds. Key improvements: mKCP ACK fix (better XDNS stability), new Finalmask obfuscation methods (header-custom, Sudoku), XHTTP/H3 with BBR congestion control, expanded mKCP TTI range (10-5000ms)
+- **telemt** — Updated from 3.3.28 to 3.3.32. DPI evasion hardening, adaptive TLS fingerprint profiles (Chrome/Firefox/TLS1.2 cascade), parallel health checks, improved concurrency model
+- **XHTTP share links** — Added `headers=chrome` parameter for User-Agent spoofing across all HTTP headers (Xray v26.3.27 feature)
+- **XDNS client instructions** — Updated to reference Xray v26+, Happ listed for all platforms
+- **Shell completions** — Added `donate`, `admin`, `xhttp` profile, `xray` service, all monitoring exporters, service aliases, `--local` build targets
+- **OPSEC guide rewrite** — Docker/UFW bypass warning with three mitigation options (IP whitelist, localhost binding, ufw-docker). Admin/monitoring access control section. Docker security hardening documentation. Updated commands, checklist, and monitoring instructions
+- **MahsaNet bulk donation** — Adaptive rate limiting: 1s between calls, increases to 3s after first 429. Retries extract wait time from API response
+
+### Fixed
+- **`dnstunnel` profile started when disabled** — Hardcoded fallback profile list included `dnstunnel` even when `ENABLE_DNSTT=false`. Now respects `ENABLE_*` flags
+- **MkDocs tables not rendering** — 8 tables across 3 docs missing required blank line before table markup
+- **Slipstream authoritative mode port** — Direct connection instructions now use `${PORT_DNS}` instead of hardcoded port 53
+
 ## [1.7.3] - 2026-03-24
 
 ### Added
@@ -922,7 +942,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uTLS fingerprint spoofing (Chrome)
 - Automatic short ID generation for Reality
 
-[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.7.3...HEAD
+[Unreleased]: https://github.com/shayanb/MoaV/compare/v1.7.4...HEAD
+[1.7.4]: https://github.com/shayanb/MoaV/compare/v1.7.3...v1.7.4
 [1.7.3]: https://github.com/shayanb/MoaV/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/shayanb/MoaV/compare/v1.7.0...v1.7.2
 [1.7.0]: https://github.com/shayanb/MoaV/compare/v1.6.2...v1.7.0

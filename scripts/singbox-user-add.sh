@@ -391,7 +391,7 @@ if [[ "${ENABLE_XHTTP:-true}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
     _xhttp_target_host="${_xhttp_target%%:*}"
     _xhttp_port="${PORT_XHTTP:-2096}"
 
-    XHTTP_LINK="vless://${USER_UUID}@${SERVER_IP}:${_xhttp_port}?type=xhttp&security=reality&sni=${_xhttp_target_host}&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&encryption=none#MoaV-XHTTP-${USERNAME}"
+    XHTTP_LINK="vless://${USER_UUID}@${SERVER_IP}:${_xhttp_port}?type=xhttp&security=reality&sni=${_xhttp_target_host}&fp=chrome&headers=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&encryption=none#MoaV-XHTTP-${USERNAME}"
 
     echo "$XHTTP_LINK" > "$OUTPUT_DIR/xhttp-vless.txt"
 
@@ -565,12 +565,11 @@ This protocol tunnels VPN traffic through DNS queries.
 It works when almost everything except DNS is blocked.
 Speed is slow but connectivity is reliable.
 
-IMPORTANT: XDNS requires Xray-core with FinalMask support.
-Standard v2rayNG may NOT support this yet.
+IMPORTANT: XDNS requires Xray-core v26+ with FinalMask support.
 
 Recommended clients:
-- Happ (Android) — beta, supports FinalMask
-- Xray CLI (any platform) — run: xray run -c xdns-config.json
+- Happ (iOS/Android/Desktop) — supports FinalMask
+- Xray CLI v26.3+ (any platform) — run: xray run -c xdns-config.json
 
 Two configs included:
 

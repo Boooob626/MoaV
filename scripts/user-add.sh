@@ -520,7 +520,7 @@ slipstream-client --domain $SLIPSTREAM_DOMAIN --cert slipstream-cert.pem --dns-s
 # Option 2: Authoritative/Direct Mode (FASTER but less stealthy)
 # -------------------------
 
-# slipstream-client --domain $SLIPSTREAM_DOMAIN --cert slipstream-cert.pem --authoritative SERVER_IP:53 --socks-listen 127.0.0.1:1080
+# slipstream-client --domain $SLIPSTREAM_DOMAIN --cert slipstream-cert.pem --authoritative SERVER_IP:${PORT_DNS:-53} --socks-listen 127.0.0.1:1080
 EOF
     log_info "✓ Slipstream instructions generated"
 fi

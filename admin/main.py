@@ -909,6 +909,7 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
 
     import asyncio
     api_call_count = 0
+    call_delay = 1  # seconds between calls, increases after 429
 
     for username in generated_users:
         user_dir = bundle_path / username
@@ -932,10 +933,10 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
             # POST to MahsaNet — telegram goes to "telegram" pool
             config_pool = "telegram" if protocol == "telegram" else MAHSANET_POOL
 
-            # Rate limit: pause every 8 calls to avoid 429
+            # Rate limit: pause between calls (adaptive — slows down after 429)
             api_call_count += 1
-            if api_call_count > 1 and api_call_count % 8 == 0:
-                await asyncio.sleep(3)
+            if api_call_count > 1:
+                await asyncio.sleep(call_delay)
 
             max_retries = 2
             for attempt in range(max_retries + 1):
@@ -956,7 +957,7 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
                         })
                         break
                     elif resp.status_code == 429 and attempt < max_retries:
-                        # Extract wait time from response, default 30s
+                        # Extract wait time from API response
                         wait = 30
                         try:
                             detail = resp.json().get("detail", "")
@@ -965,7 +966,9 @@ async def mahsanet_donate(request: Request, _: str = Depends(verify_auth)):
                                 wait = int(m.group(1)) + 2
                         except Exception:
                             pass
+                        # Wait the requested time, then increase pace for all future calls
                         await asyncio.sleep(wait)
+                        call_delay = max(call_delay, 3)  # slow down to 3s between calls after first 429
                         continue
                     else:
                         err_detail = resp.text[:200]

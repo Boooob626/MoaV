@@ -95,9 +95,10 @@ slipstream-client --domain $slipstream_domain --cert slipstream-cert.pem --dns-s
 # -------------------------
 
 # Connects directly to the server (bypasses DNS resolvers):
-# slipstream-client --domain $slipstream_domain --cert slipstream-cert.pem --authoritative SERVER_IP:53 --socks-listen 127.0.0.1:1080
+# slipstream-client --domain $slipstream_domain --cert slipstream-cert.pem --authoritative SERVER_IP:${PORT_DNS:-53} --socks-listen 127.0.0.1:1080
 
 # Replace SERVER_IP with the actual server IP address.
+# PORT_DNS defaults to 53. Check your .env if changed (e.g. 5353 when XDNS uses port 53).
 # This mode is ~5x faster but reveals the server IP to network observers.
 
 # -------------------------

@@ -769,8 +769,26 @@ install_completions() {
         done
     fi
 
+    # Also add to .bashrc/.zshrc as fallback (in case bash-completion package isn't installed)
+    local shell_rc=""
+    if [[ -n "${BASH_VERSION:-}" ]]; then
+        shell_rc="$HOME/.bashrc"
+    elif [[ -n "${ZSH_VERSION:-}" ]]; then
+        shell_rc="$HOME/.zshrc"
+    fi
+    if [[ -n "$shell_rc" && -f "$shell_rc" ]]; then
+        local source_line="[[ -f \"$comp_src\" ]] && source \"$comp_src\"  # moav completions"
+        if ! grep -q "moav completions" "$shell_rc" 2>/dev/null; then
+            echo "" >> "$shell_rc"
+            echo "$source_line" >> "$shell_rc"
+        fi
+    fi
+
+    # Source now for the current shell
+    source "$comp_src" 2>/dev/null || true
+
     if [[ "$installed" == "true" ]]; then
-        info "Shell completions installed (restart shell or run: source $comp_src)"
+        success "Shell completions installed (available in this and future sessions)"
     fi
 }
 
@@ -3407,7 +3425,13 @@ start_services() {
     ensure_clash_api_secret "$profiles" || skip_monitoring=1
     if [[ $skip_monitoring -eq 1 ]]; then
         # Replace 'all' with individual profiles excluding monitoring
-        profiles="--profile proxy --profile wireguard --profile dnstunnel --profile trusttunnel --profile admin --profile conduit --profile snowflake"
+        # Respect ENABLE_* flags to avoid starting disabled services
+        profiles="--profile proxy --profile wireguard --profile trusttunnel --profile xhttp --profile telegram --profile admin --profile conduit --profile snowflake"
+        local _dnstt_f=$(get_env_val "ENABLE_DNSTT" "$SCRIPT_DIR/.env" "false")
+        local _slip_f=$(get_env_val "ENABLE_SLIPSTREAM" "$SCRIPT_DIR/.env" "false")
+        [[ "$_dnstt_f" == "true" || "$_slip_f" == "true" ]] && profiles="$profiles --profile dnstunnel"
+        local _amneziawg_f=$(get_env_val "ENABLE_AMNEZIAWG" "$SCRIPT_DIR/.env" "true")
+        [[ "$_amneziawg_f" == "true" ]] && profiles="$profiles --profile amneziawg"
     fi
 
     echo ""
@@ -5389,7 +5413,13 @@ cmd_start() {
     ensure_clash_api_secret "$profiles" || skip_monitoring=1
     if [[ $skip_monitoring -eq 1 ]]; then
         # Replace 'all' with individual profiles excluding monitoring
-        profiles="--profile proxy --profile wireguard --profile dnstunnel --profile trusttunnel --profile admin --profile conduit --profile snowflake"
+        # Respect ENABLE_* flags to avoid starting disabled services
+        profiles="--profile proxy --profile wireguard --profile trusttunnel --profile xhttp --profile telegram --profile admin --profile conduit --profile snowflake"
+        local _dnstt_s=$(get_env_val "ENABLE_DNSTT" "false")
+        local _slip_s=$(get_env_val "ENABLE_SLIPSTREAM" "false")
+        [[ "$_dnstt_s" == "true" || "$_slip_s" == "true" ]] && profiles="$profiles --profile dnstunnel"
+        local _amneziawg_s=$(get_env_val "ENABLE_AMNEZIAWG" "true")
+        [[ "$_amneziawg_s" == "true" ]] && profiles="$profiles --profile amneziawg"
     fi
 
     # Check port 53 conflicts for DNS tunnels

@@ -18,6 +18,7 @@ RUN apk add --no-cache \
     bash \
     ca-certificates \
     libcap \
+    su-exec \
     tzdata \
     && rm -rf /var/cache/apk/*
 
@@ -51,5 +52,5 @@ RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 993/tcp 9090/tcp
 
-USER moav
+# Entrypoint runs as root to fix tmpfs permissions, then drops to moav
 ENTRYPOINT ["/app/entrypoint.sh"]

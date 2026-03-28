@@ -1,5 +1,5 @@
 # Xray-core: VLESS+XHTTP+Reality+XDNS
-# Built from source (main branch) to include latest XDNS/FinalMask support
+# Built from source for latest FinalMask/XDNS/XHTTP support
 # XHTTP transport, mKCP+XDNS DNS tunnel, Reality TLS camouflage
 
 # Build stage
@@ -8,9 +8,9 @@ FROM golang:1.26-alpine AS builder
 RUN apk add --no-cache git
 
 ARG XRAY_REPO=https://github.com/XTLS/Xray-core.git
-ARG XRAY_BRANCH=main
+ARG XRAY_VERSION=v26.3.27
 
-RUN git clone --depth 1 -b ${XRAY_BRANCH} ${XRAY_REPO} /src
+RUN git clone --depth 1 -b ${XRAY_VERSION} ${XRAY_REPO} /src
 WORKDIR /src
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /xray ./main
 
