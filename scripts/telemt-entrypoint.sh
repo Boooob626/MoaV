@@ -36,6 +36,9 @@ echo "[telemt] TLS domain: ${TLS_DOMAIN:-unknown}"
 echo "[telemt] Users: ${USER_COUNT}"
 echo "================================================"
 
-# Start telemt with config file
+# Fix tmpfs directory ownership (mounted as root, telemt runs as moav)
+chown -R moav:moav /app/tlsfront /app/cache 2>/dev/null || true
+
+# Start telemt as moav user
 cd /app
-exec telemt "$CONFIG_FILE"
+exec su-exec moav telemt "$CONFIG_FILE"
