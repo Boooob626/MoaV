@@ -230,8 +230,9 @@ else
     export ENABLE_XHTTP="${ENABLE_XHTTP:-true}"
     export ENABLE_TELEMT="${ENABLE_TELEMT:-true}"
 fi
-export PORT_XHTTP="${PORT_XHTTP:-2096}"
-export XHTTP_REALITY_TARGET="${XHTTP_REALITY_TARGET:-dl.google.com:443}"
+export PORT_STEALTH="${PORT_STEALTH:-2096}"
+export XHTTP_STEALTH_PATH="${XHTTP_STEALTH_PATH:-secretpath}"
+export XHTTP_STEALTH_CN="${XHTTP_STEALTH_CN:-www.example.com}"
 export PORT_TELEMT="${PORT_TELEMT:-993}"
 export TELEMT_TLS_DOMAIN="${TELEMT_TLS_DOMAIN:-dl.google.com}"
 export TELEMT_MAX_TCP_CONNS="${TELEMT_MAX_TCP_CONNS:-100}"

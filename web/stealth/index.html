@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>%%TITLE%%</title>
+    <meta name="description" content="%%META_DESC%%">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:%%BG_COLOR%%;color:%%TEXT_COLOR%%;line-height:1.6;min-height:100vh}
+        nav{max-width:960px;margin:0 auto;padding:1rem 1.5rem;display:flex;justify-content:space-between;align-items:center}
+        nav .logo{font-size:1.25rem;font-weight:600;color:%%ACCENT%%;text-decoration:none;letter-spacing:-0.5px}
+        nav ul{list-style:none;display:flex;gap:1.5rem}
+        nav a{color:%%TEXT_COLOR%%;text-decoration:none;font-size:0.9rem;opacity:0.8}
+        nav a:hover{opacity:1}
+        .hero{max-width:960px;margin:0 auto;padding:4rem 1.5rem 3rem;text-align:center}
+        .hero h1{font-size:2.2rem;font-weight:300;letter-spacing:-1px;margin-bottom:1rem;color:%%ACCENT%%}
+        .hero p{font-size:1.05rem;opacity:0.7;max-width:600px;margin:0 auto 2rem}
+        .hero .cta{display:inline-block;padding:0.65rem 1.8rem;background:%%ACCENT%%;color:#fff;border-radius:6px;text-decoration:none;font-size:0.95rem;font-weight:500}
+        .features{max-width:960px;margin:0 auto;padding:2rem 1.5rem 4rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem}
+        .card{background:%%CARD_BG%%;border-radius:8px;padding:1.5rem;border:1px solid %%BORDER%%}
+        .card h3{font-size:1rem;font-weight:600;margin-bottom:0.5rem}
+        .card p{font-size:0.88rem;opacity:0.65;line-height:1.5}
+        footer{max-width:960px;margin:0 auto;padding:2rem 1.5rem;border-top:1px solid %%BORDER%%;text-align:center;font-size:0.8rem;opacity:0.5}
+        <!-- %%RANDOM_COMMENT%% -->
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/" class="logo">%%HEADING%%</a>
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/">About</a></li>
+            <li><a href="/">Services</a></li>
+            <li><a href="/">Contact</a></li>
+        </ul>
+    </nav>
+    <section class="hero">
+        <h1>%%HERO_TITLE%%</h1>
+        <p>%%HERO_DESC%%</p>
+        <a href="/" class="cta">Learn More</a>
+    </section>
+    <section class="features">
+        <div class="card">
+            <h3>%%CARD1_TITLE%%</h3>
+            <p>%%CARD1_DESC%%</p>
+        </div>
+        <div class="card">
+            <h3>%%CARD2_TITLE%%</h3>
+            <p>%%CARD2_DESC%%</p>
+        </div>
+        <div class="card">
+            <h3>%%CARD3_TITLE%%</h3>
+            <p>%%CARD3_DESC%%</p>
+        </div>
+    </section>
+    <footer>
+        <p>%%FOOTER%%</p>
+    </footer>
+</body>
+</html>

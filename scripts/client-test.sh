@@ -1377,9 +1377,9 @@ EOF
     rm -f "$test_config"
 }
 
-# Test XHTTP (VLESS+XHTTP+Reality via Xray-core)
+# Test XHTTP (VLESS+XHTTP+Stealth via Xray-core + Caddy TLS)
 test_xhttp() {
-    log_info "Testing XHTTP (VLESS+XHTTP+Reality)..."
+    log_info "Testing XHTTP (VLESS+XHTTP+Stealth)..."
 
     local config_file=""
     local detail=""
@@ -1417,18 +1417,19 @@ test_xhttp() {
     local server=$(extract_host "$uri")
     local port=$(extract_port "$uri")
     local sni=$(extract_param "$uri" "sni")
-    local pbk=$(extract_param "$uri" "pbk")
-    local sid=$(extract_param "$uri" "sid")
+    local path=$(extract_param "$uri" "path")
     local fp=$(extract_param "$uri" "fp")
+    local security=$(extract_param "$uri" "security")
 
     [[ -z "$fp" ]] && fp="chrome"
     [[ -z "$port" ]] && port="2096"
     port=$(echo "$port" | tr -cd '0-9')
     [[ -z "$port" ]] && port="2096"
+    [[ -z "$path" ]] && path="/secretpath/"
 
-    log_debug "Parsed: server=$server port=$port uuid=$uuid sni=$sni"
+    log_debug "Parsed: server=$server port=$port uuid=$uuid sni=$sni path=$path"
 
-    if [[ -z "$server" ]] || [[ -z "$uuid" ]] || [[ -z "$sni" ]] || [[ -z "$pbk" ]]; then
+    if [[ -z "$server" ]] || [[ -z "$uuid" ]] || [[ -z "$sni" ]]; then
         detail="Failed to parse XHTTP URI (missing required fields)"
         log_error "$detail"
         RESULTS[xhttp]="fail"
@@ -1436,7 +1437,7 @@ test_xhttp() {
         return
     fi
 
-    # Generate Xray-core config (different format from sing-box)
+    # Generate Xray-core config — TLS mode (Stealth behind Caddy)
     local client_config="$TEMP_DIR/xhttp-client.json"
     cat > "$client_config" << EOF
 {
@@ -1458,12 +1459,15 @@ test_xhttp() {
     },
     "streamSettings": {
       "network": "xhttp",
-      "security": "reality",
-      "realitySettings": {
+      "xhttpSettings": {
+        "mode": "auto",
+        "path": "$path"
+      },
+      "security": "tls",
+      "tlsSettings": {
         "serverName": "$sni",
         "fingerprint": "$fp",
-        "publicKey": "$pbk",
-        "shortId": "$sid"
+        "allowInsecure": true
       }
     }
   }]
@@ -1507,13 +1511,13 @@ EOF
         exit_ip=$(curl -sf --socks5 127.0.0.1:10806 --max-time "$TEST_TIMEOUT" https://api.ipify.org 2>/dev/null || \
                   curl -sf --socks5 127.0.0.1:10806 --max-time "$TEST_TIMEOUT" https://ifconfig.me 2>/dev/null || true)
         if [[ -n "$exit_ip" ]]; then
-            log_success "XHTTP connection successful (exit IP: $exit_ip)"
+            log_success "XHTTP Stealth connection successful (exit IP: $exit_ip)"
             RESULTS[xhttp]="pass"
-            DETAILS[xhttp]="Connected via VLESS/XHTTP/Reality (Xray-core), exit IP: $exit_ip"
+            DETAILS[xhttp]="Connected via VLESS/XHTTP/Stealth (Xray+Caddy), exit IP: $exit_ip"
         else
-            log_success "XHTTP connection successful"
+            log_success "XHTTP Stealth connection successful"
             RESULTS[xhttp]="pass"
-            DETAILS[xhttp]="Connected via VLESS/XHTTP/Reality (Xray-core)"
+            DETAILS[xhttp]="Connected via VLESS/XHTTP/Stealth (Xray+Caddy)"
         fi
     else
         detail="Connection test failed"

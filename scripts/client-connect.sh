@@ -478,7 +478,7 @@ connect_wireguard() {
     fi
 }
 
-# Connect using XHTTP (VLESS+XHTTP+Reality via Xray-core)
+# Connect using XHTTP (VLESS+XHTTP+Stealth via Xray-core + Caddy TLS)
 connect_xhttp() {
     local config_file=""
 
@@ -506,21 +506,26 @@ connect_xhttp() {
     local server=$(extract_host "$uri")
     local port=$(extract_port "$uri")
     local sni=$(extract_param "$uri" "sni")
-    local pbk=$(extract_param "$uri" "pbk")
-    local sid=$(extract_param "$uri" "sid")
+    local path=$(extract_param "$uri" "path")
     local fp=$(extract_param "$uri" "fp")
+    local security=$(extract_param "$uri" "security")
 
     [[ -z "$fp" ]] && fp="chrome"
     [[ -z "$port" ]] && port="2096"
     port=$(echo "$port" | tr -cd '0-9')
     [[ -z "$port" ]] && port="2096"
 
-    if [[ -z "$server" ]] || [[ -z "$uuid" ]] || [[ -z "$sni" ]] || [[ -z "$pbk" ]]; then
+    if [[ -z "$server" ]] || [[ -z "$uuid" ]] || [[ -z "$sni" ]]; then
         log_error "Failed to parse XHTTP URI"
         return 1
     fi
 
-    # Generate Xray config
+    # Build xhttpSettings
+    local xhttp_extra=""
+    [[ -n "$path" ]] && xhttp_extra="\"path\": \"$path\","
+    [[ -z "$path" ]] && path="/"
+
+    # Generate Xray config — TLS mode (Stealth behind Caddy)
     local xray_config="/tmp/moav-client-xhttp.json"
     cat > "$xray_config" << EOF
 {
@@ -549,19 +554,22 @@ connect_xhttp() {
     },
     "streamSettings": {
       "network": "xhttp",
-      "security": "reality",
-      "realitySettings": {
+      "xhttpSettings": {
+        "mode": "auto",
+        "path": "$path"
+      },
+      "security": "tls",
+      "tlsSettings": {
         "serverName": "$sni",
         "fingerprint": "$fp",
-        "publicKey": "$pbk",
-        "shortId": "$sid"
+        "allowInsecure": true
       }
     }
   }]
 }
 EOF
 
-    log_info "Starting Xray with XHTTP..."
+    log_info "Starting Xray with XHTTP+Stealth..."
     xray run -c "$xray_config" &
     CURRENT_PID=$!
     CURRENT_PROTOCOL="xhttp"

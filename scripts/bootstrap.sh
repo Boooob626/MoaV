@@ -244,8 +244,10 @@ export ENABLE_SLIPSTREAM="${ENABLE_SLIPSTREAM:-false}"
 export SLIPSTREAM_SUBDOMAIN="${SLIPSTREAM_SUBDOMAIN:-s}"
 export ENABLE_TRUSTTUNNEL="${ENABLE_TRUSTTUNNEL:-true}"
 export ENABLE_XHTTP="${ENABLE_XHTTP:-true}"
-export PORT_XHTTP="${PORT_XHTTP:-2096}"
-export XHTTP_REALITY_TARGET="${XHTTP_REALITY_TARGET:-dl.google.com:443}"
+# XHTTP Stealth mode (Caddy TLS frontend + fallback to static decoy)
+export PORT_STEALTH="${PORT_STEALTH:-2096}"
+export XHTTP_STEALTH_PATH="${XHTTP_STEALTH_PATH:-secretpath}"
+export XHTTP_STEALTH_CN="${XHTTP_STEALTH_CN:-www.example.com}"
 export ENABLE_XDNS="${ENABLE_XDNS:-true}"
 export XDNS_SUBDOMAIN="${XDNS_SUBDOMAIN:-x}"
 export XDNS_MTU="${XDNS_MTU:-35}"
@@ -627,23 +629,39 @@ fi
 
 # -----------------------------------------------------------------------------
 # Generate Xray config (if enabled)
+# Stealth mode: VLESS+XHTTP behind Caddy TLS frontend, anti-active-probing
 # -----------------------------------------------------------------------------
 if [[ "${ENABLE_XHTTP:-true}" == "true" ]]; then
     # Count users in Xray config for verification
     XRAY_USER_COUNT=$(echo "$XRAY_USERS_JSON" | grep -o '"id"' | wc -l || echo "0")
-    log_info "Generating Xray-core (XHTTP) configuration with $XRAY_USER_COUNT users (reusing Reality keys from sing-box)..."
+    log_info "Generating Xray-core (XHTTP Stealth) configuration with $XRAY_USER_COUNT users..."
 
+    # --- Generate self-signed TLS certificate for stealth mode ---
+    STEALTH_CERT_DIR="/state/keys/stealth"
+    if [[ ! -f "$STEALTH_CERT_DIR/cert.pem" ]]; then
+        log_info "Generating self-signed TLS certificate for stealth mode (CN: ${XHTTP_STEALTH_CN:-www.example.com})..."
+        mkdir -p "$STEALTH_CERT_DIR"
+        _stealth_cn="${XHTTP_STEALTH_CN:-www.example.com}"
+        openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+            -keyout "$STEALTH_CERT_DIR/key.pem" \
+            -out "$STEALTH_CERT_DIR/cert.pem" \
+            -days 3650 -nodes \
+            -subj "/CN=${_stealth_cn}" \
+            -addext "subjectAltName=DNS:${_stealth_cn}" \
+            2>/dev/null
+        log_info "Stealth TLS certificate created (ECDSA P-256, valid 10 years)"
+    else
+        log_info "Stealth TLS certificate already exists"
+    fi
+
+    # Compute pinnedPeerCertSha256 hash for client configs
+    STEALTH_CERT_HASH=$(openssl x509 -noout -fingerprint -sha256 -in "$STEALTH_CERT_DIR/cert.pem" 2>/dev/null | sed 's/.*=//;s/://g')
+    export STEALTH_CERT_HASH
+    log_info "Stealth cert SHA256 pin: ${STEALTH_CERT_HASH:0:16}..."
+
+    # Export variables for envsubst template processing
     export XRAY_USERS_JSON
-    export PORT_XHTTP
-    export XHTTP_REALITY_TARGET
-
-    # Extract host from target (e.g., "dl.google.com:443" -> "dl.google.com")
-    XHTTP_REALITY_TARGET_HOST="${XHTTP_REALITY_TARGET%%:*}"
-    export XHTTP_REALITY_TARGET_HOST
-
-    # Reuse Reality keys from sing-box
-    export REALITY_PRIVATE_KEY
-    export REALITY_SHORT_ID
+    export XHTTP_STEALTH_PATH="${XHTTP_STEALTH_PATH:-secretpath}"
 
     envsubst < /configs/xray/config.json.template > /configs/xray/config.json
 
@@ -690,7 +708,7 @@ with open('/configs/xray/config.json', 'w') as f:
 " && log_info "XDNS inbound added to Xray config" || log_error "Failed to add XDNS inbound"
     fi
 
-    log_info "Xray configuration written to /configs/xray/config.json"
+    log_info "Xray Stealth configuration written to /configs/xray/config.json"
 fi
 
 # -----------------------------------------------------------------------------

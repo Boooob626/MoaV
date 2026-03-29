@@ -56,7 +56,7 @@ PROTOCOL PRIORITY (auto mode):
     1. Reality (VLESS)   - Primary, most stealth
     2. Hysteria2         - Fast UDP-based
     3. Trojan            - Reliable TCP backup
-    4. XHTTP             - VLESS+XHTTP+Reality (Xray-core)
+    4. XHTTP             - VLESS+XHTTP+Stealth (Xray+Caddy)
     5. TrustTunnel       - HTTP/2 + QUIC
     6. WireGuard         - Via wstunnel (WebSocket)
     7. AmneziaWG         - Obfuscated WireGuard

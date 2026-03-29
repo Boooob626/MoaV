@@ -1,10 +1,11 @@
 #!/bin/bash
-# Xray-core entrypoint script (VLESS+XHTTP+Reality)
+# Xray-core entrypoint script (VLESS+XHTTP+Stealth behind Caddy TLS frontend)
 set -e
 
 CONFIG_FILE="/etc/xray/config.json"
 
-echo "[Xray] Starting Xray-core (VLESS+XHTTP+Reality)..."
+echo "[Xray] Starting Xray-core (VLESS+XHTTP+Stealth)..."
+echo "[Xray] Running behind Caddy TLS frontend on internal port 8443"
 
 # Check for config
 if [[ ! -f "$CONFIG_FILE" ]]; then

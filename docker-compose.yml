@@ -572,8 +572,42 @@ services:
       - all
 
   # ===========================================================================
-  # XRAY: VLESS+XHTTP+Reality+XDNS (Xray-core)
-  # XHTTP splits traffic into HTTP connections, XDNS tunnels through DNS queries
+  # CADDY: TLS frontend for XHTTP stealth mode (anti-active-probing)
+  # Terminates TLS with self-signed cert, routes XHTTP to Xray, decoy to static HTML
+  # Defense against GFW (China) and RKN (Russia) active probing
+  # ===========================================================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: moav-caddy
+    restart: unless-stopped
+    networks:
+      - moav_net
+    ports:
+      - "${PORT_STEALTH:-2096}:443/tcp"
+    volumes:
+      - ./configs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - moav_state:/state:ro
+      - ./web/stealth:/srv/template:ro
+      - ./scripts/caddy-entrypoint.sh:/entrypoint/entrypoint.sh:ro
+    environment:
+      - XHTTP_STEALTH_PATH=${XHTTP_STEALTH_PATH:-secretpath}
+      - TZ=${TZ:-UTC}
+    entrypoint: ["/bin/sh", "/entrypoint/entrypoint.sh"]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    cpus: 0.25
+    profiles:
+      - xhttp
+      - all
+    depends_on:
+      - xray
+
+  # ===========================================================================
+  # XRAY: VLESS+XHTTP Stealth+XDNS (Xray-core)
+  # XHTTP behind Caddy TLS frontend, XDNS tunnels through DNS queries
   # Built from source for latest FinalMask/XDNS support
   # ===========================================================================
   xray:
@@ -587,7 +621,6 @@ services:
     networks:
       - moav_net
     ports:
-      - "${PORT_XHTTP:-2096}:${PORT_XHTTP:-2096}/tcp"
       - "${PORT_XDNS:-53}:5355/udp"
     volumes:
       - ./configs/xray:/etc/xray:ro
@@ -667,6 +700,9 @@ services:
       - XDNS_MTU=${XDNS_MTU:-35}
       - PORT_XDNS=${PORT_XDNS:-53}
       - ENABLE_XHTTP=${ENABLE_XHTTP:-true}
+      - PORT_STEALTH=${PORT_STEALTH:-2096}
+      - XHTTP_STEALTH_PATH=${XHTTP_STEALTH_PATH:-secretpath}
+      - XHTTP_STEALTH_CN=${XHTTP_STEALTH_CN:-www.example.com}
       - MAHSANET_API_KEY=${MAHSANET_API_KEY:-}
       - MAHSANET_PROTOCOLS=${MAHSANET_PROTOCOLS:-reality hysteria2}
       - MAHSANET_POOL=${MAHSANET_POOL:-mahsa}
@@ -1109,8 +1145,9 @@ services:
       - ENABLE_AMNEZIAWG=${ENABLE_AMNEZIAWG:-true}
       - PORT_AMNEZIAWG=${PORT_AMNEZIAWG:-51821}
       - ENABLE_XHTTP=${ENABLE_XHTTP:-true}
-      - PORT_XHTTP=${PORT_XHTTP:-2096}
-      - XHTTP_REALITY_TARGET=${XHTTP_REALITY_TARGET:-dl.google.com:443}
+      - PORT_STEALTH=${PORT_STEALTH:-2096}
+      - XHTTP_STEALTH_PATH=${XHTTP_STEALTH_PATH:-secretpath}
+      - XHTTP_STEALTH_CN=${XHTTP_STEALTH_CN:-www.example.com}
       - ENABLE_XDNS=${ENABLE_XDNS:-true}
       - XDNS_SUBDOMAIN=${XDNS_SUBDOMAIN:-x}
       - XDNS_MTU=${XDNS_MTU:-35}

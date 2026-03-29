@@ -30,9 +30,9 @@
       }
     },
     {
-      "tag": "vless-xhttp-reality",
+      "tag": "vless-xhttp-stealth",
       "listen": "0.0.0.0",
-      "port": ${PORT_XHTTP},
+      "port": 8443,
       "protocol": "vless",
       "settings": {
         "clients": [${XRAY_USERS_JSON}],
@@ -41,15 +41,10 @@
       "streamSettings": {
         "network": "xhttp",
         "xhttpSettings": {
-          "mode": "auto"
+          "mode": "auto",
+          "path": "/${XHTTP_STEALTH_PATH}/"
         },
-        "security": "reality",
-        "realitySettings": {
-          "dest": "${XHTTP_REALITY_TARGET}",
-          "serverNames": ["${XHTTP_REALITY_TARGET_HOST}"],
-          "privateKey": "${REALITY_PRIVATE_KEY}",
-          "shortIds": ["${REALITY_SHORT_ID}"]
-        }
+        "security": "none"
       }
     }
   ],

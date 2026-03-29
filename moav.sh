@@ -2493,7 +2493,7 @@ doctor_check_ports() {
     # Service -> port mappings
     local -A port_map=(
         ["sing-box"]="$(get_env_val 'PORT_REALITY' "$env_file" '443')"
-        ["xray"]="$(get_env_val 'PORT_XHTTP' "$env_file" '2096')"
+        ["xray"]="$(get_env_val 'PORT_STEALTH' "$env_file" '2096')"
         ["wireguard"]="$(get_env_val 'PORT_WIREGUARD' "$env_file" '51820')"
         ["amneziawg"]="$(get_env_val 'PORT_AMNEZIAWG' "$env_file" '51821')"
         ["telemt"]="$(get_env_val 'PORT_TELEMT' "$env_file" '993')"
@@ -3049,9 +3049,9 @@ select_profiles() {
     fi
 
     if [[ "$xhttp_enabled" == "true" ]]; then
-        xhttp_line="  ${CYAN}│${NC}  ${GREEN}6${NC}   xhttp        VLESS+XHTTP+Reality (Xray-core)               ${CYAN}│${NC}"
+        xhttp_line="  ${CYAN}│${NC}  ${GREEN}6${NC}   xhttp        VLESS+XHTTP+Stealth (Xray+Caddy)              ${CYAN}│${NC}"
     else
-        xhttp_line="  ${CYAN}│${NC}  ${DIM}6   xhttp        VLESS+XHTTP+Reality (disabled)${NC}                ${CYAN}│${NC}"
+        xhttp_line="  ${CYAN}│${NC}  ${DIM}6   xhttp        VLESS+XHTTP+Stealth (disabled)${NC}               ${CYAN}│${NC}"
     fi
 
     if [[ "$telegram_enabled" == "true" ]]; then
@@ -3145,7 +3145,7 @@ select_profiles() {
             SELECTED_PROFILES+=("trusttunnel")
         fi
 
-        # xhttp profile (Xray-core VLESS+XHTTP+Reality)
+        # xhttp profile (Xray-core VLESS+XHTTP+Stealth + Caddy TLS frontend)
         if [[ "$enable_xhttp" == "true" ]]; then
             SELECTED_PROFILES+=("xhttp")
         fi
@@ -7021,8 +7021,9 @@ cmd_regenerate_users() {
     local slipstream_subdomain=$(get_env_val "SLIPSTREAM_SUBDOMAIN" .env "s")
     local enable_trusttunnel=$(get_env_val "ENABLE_TRUSTTUNNEL" .env "true")
     local enable_xhttp=$(get_env_val "ENABLE_XHTTP" .env "true")
-    local port_xhttp=$(get_env_val "PORT_XHTTP" .env "2096")
-    local xhttp_reality_target=$(get_env_val "XHTTP_REALITY_TARGET" .env "dl.google.com:443")
+    local port_stealth=$(get_env_val "PORT_STEALTH" .env "2096")
+    local xhttp_stealth_path=$(get_env_val "XHTTP_STEALTH_PATH" .env "secretpath")
+    local xhttp_stealth_cn=$(get_env_val "XHTTP_STEALTH_CN" .env "www.example.com")
     local enable_telemt=$(get_env_val "ENABLE_TELEMT" .env "true")
     local telemt_tls_domain=$(get_env_val "TELEMT_TLS_DOMAIN" .env "dl.google.com")
     local telemt_max_tcp_conns=$(get_env_val "TELEMT_MAX_TCP_CONNS" .env "100")
@@ -7054,8 +7055,9 @@ cmd_regenerate_users() {
             -e "SLIPSTREAM_SUBDOMAIN=${slipstream_subdomain:-s}" \
             -e "ENABLE_TRUSTTUNNEL=${enable_trusttunnel:-true}" \
             -e "ENABLE_XHTTP=${enable_xhttp:-true}" \
-            -e "PORT_XHTTP=${port_xhttp:-2096}" \
-            -e "XHTTP_REALITY_TARGET=${xhttp_reality_target:-dl.google.com:443}" \
+            -e "PORT_STEALTH=${port_stealth:-2096}" \
+            -e "XHTTP_STEALTH_PATH=${xhttp_stealth_path:-secretpath}" \
+            -e "XHTTP_STEALTH_CN=${xhttp_stealth_cn:-www.example.com}" \
             -e "ENABLE_TELEMT=${enable_telemt:-true}" \
             -e "TELEMT_TLS_DOMAIN=${telemt_tls_domain:-dl.google.com}" \
             -e "TELEMT_MAX_TCP_CONNS=${telemt_max_tcp_conns:-100}" \

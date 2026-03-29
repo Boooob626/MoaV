@@ -367,31 +367,30 @@ EOF
     log_info "Generated TrustTunnel client config (toml + txt + json)"
 fi
 
-# Add user to Xray (XHTTP) if config exists and enabled
+# Add user to Xray (XHTTP Stealth) if config exists and enabled
 XRAY_CONFIG="configs/xray/config.json"
 if [[ "${ENABLE_XHTTP:-true}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
-    log_info "Adding $USERNAME to Xray (XHTTP)..."
+    log_info "Adding $USERNAME to Xray (XHTTP Stealth)..."
 
-    # Check if user already exists (search by UUID in the vless-xhttp-reality inbound)
+    # Check if user already exists (search by UUID in the vless-xhttp-stealth inbound)
     if jq -e --arg uuid "$USER_UUID" \
-        '[.inbounds[] | select(.tag == "vless-xhttp-reality")] | .[0].settings.clients[] | select(.id == $uuid)' \
+        '[.inbounds[] | select(.tag == "vless-xhttp-stealth")] | .[0].settings.clients[] | select(.id == $uuid)' \
         "$XRAY_CONFIG" >/dev/null 2>&1; then
         log_info "User '$USERNAME' already exists in Xray config, skipping..."
     else
-        # Add new client entry to the vless-xhttp-reality inbound (flow MUST be empty for XHTTP)
-        # Add to ALL vless inbounds (xhttp-reality AND xdns)
+        # Add new client entry to all VLESS inbounds (stealth AND xdns)
         jq --arg id "$USER_UUID" --arg email "${USERNAME}@moav" \
             '(.inbounds[] | select(.protocol == "vless" and .tag != null and (.tag | startswith("vless-")))).settings.clients += [{"id": $id, "email": $email, "flow": ""}]' \
             "$XRAY_CONFIG" > /tmp/xray.tmp && mv -f /tmp/xray.tmp "$XRAY_CONFIG"
         log_info "Added $USERNAME to Xray config (all VLESS inbounds)"
     fi
 
-    # Generate XHTTP client configs
-    _xhttp_target="${XHTTP_REALITY_TARGET:-dl.google.com:443}"
-    _xhttp_target_host="${_xhttp_target%%:*}"
-    _xhttp_port="${PORT_XHTTP:-2096}"
+    # Generate XHTTP Stealth client configs
+    _stealth_port="${PORT_STEALTH:-2096}"
+    _stealth_path="${XHTTP_STEALTH_PATH:-secretpath}"
+    _stealth_cn="${XHTTP_STEALTH_CN:-www.example.com}"
 
-    XHTTP_LINK="vless://${USER_UUID}@${SERVER_IP}:${_xhttp_port}?type=xhttp&security=reality&sni=${_xhttp_target_host}&fp=chrome&headers=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&encryption=none#MoaV-XHTTP-${USERNAME}"
+    XHTTP_LINK="vless://${USER_UUID}@${SERVER_IP}:${_stealth_port}?type=xhttp&security=tls&sni=${_stealth_cn}&fp=chrome&path=%2F${_stealth_path}%2F&encryption=none#MoaV-Stealth-${USERNAME}"
 
     echo "$XHTTP_LINK" > "$OUTPUT_DIR/xhttp-vless.txt"
 
@@ -400,25 +399,26 @@ if [[ "${ENABLE_XHTTP:-true}" == "true" ]] && [[ -f "$XRAY_CONFIG" ]]; then
     fi
 
     cat > "$OUTPUT_DIR/xhttp.txt" <<EOF
-XHTTP (VLESS+XHTTP+Reality) Configuration for $USERNAME
-=======================================================
+XHTTP Stealth (VLESS+XHTTP+TLS) Configuration for $USERNAME
+============================================================
 
-Protocol: VLESS + XHTTP + Reality (via Xray-core)
+Protocol: VLESS + XHTTP + TLS Stealth (via Xray-core + Caddy)
 Server: ${SERVER_IP}
-Port: ${_xhttp_port}
+Port: ${_stealth_port}
 UUID: ${USER_UUID}
-SNI: ${_xhttp_target_host}
-Reality Public Key: ${REALITY_PUBLIC_KEY}
-Short ID: ${REALITY_SHORT_ID}
+TLS CN: ${_stealth_cn}
+Path: /${_stealth_path}/
+Cert Pin (SHA256): ${STEALTH_CERT_HASH:-N/A}
 Fingerprint: chrome
 Transport: xhttp
+Anti-Probe: Caddy TLS frontend with static decoy fallback
 
 Share Link:
 ${XHTTP_LINK}
 
 Client Apps:
 - Android: V2rayNG, Hiddify
-- iOS: Streisand, V2Box
+- iOS: Streisand, V2Box, Happ
 - Windows: Hiddify, V2rayN
 - macOS: V2rayU, Hiddify
 
@@ -428,7 +428,7 @@ Instructions:
 3. Connect
 EOF
 
-    log_info "Generated XHTTP client config"
+    log_info "Generated XHTTP Stealth client config"
 fi
 
 # Generate XDNS client config if enabled

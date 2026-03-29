@@ -401,20 +401,20 @@ EOF
 fi
 
 # -----------------------------------------------------------------------------
-# Generate XHTTP (Xray-core) client config (if enabled)
+# Generate XHTTP Stealth (Xray-core + Caddy TLS) client config (if enabled)
 # -----------------------------------------------------------------------------
 if [[ "${ENABLE_XHTTP:-true}" == "true" ]]; then
   if [[ -f "$OUTPUT_DIR/xhttp-vless.txt" ]] && [[ "$FORCE_REGENERATE" != "force" ]]; then
-    log_info "  - XHTTP config exists, skipping"
+    log_info "  - XHTTP Stealth config exists, skipping"
   else
     BUNDLE_CHANGED=true
-    # XHTTP Reality target host (strip port)
-    _xhttp_target="${XHTTP_REALITY_TARGET:-dl.google.com:443}"
-    _xhttp_target_host="${_xhttp_target%%:*}"
-    _xhttp_port="${PORT_XHTTP:-2096}"
+    _stealth_port="${PORT_STEALTH:-2096}"
+    _stealth_path="${XHTTP_STEALTH_PATH:-secretpath}"
+    _stealth_cn="${XHTTP_STEALTH_CN:-www.example.com}"
 
-    # Generate VLESS XHTTP share link
-    XHTTP_LINK="vless://${USER_UUID}@${SERVER_IP}:${_xhttp_port}?type=xhttp&security=reality&sni=${_xhttp_target_host}&fp=chrome&headers=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&encryption=none#MoaV-XHTTP-${USER_ID}"
+    # Generate VLESS XHTTP+TLS Stealth share link
+    # Note: pinnedPeerCertSha256 is not in share link standard, included in JSON config below
+    XHTTP_LINK="vless://${USER_UUID}@${SERVER_IP}:${_stealth_port}?type=xhttp&security=tls&sni=${_stealth_cn}&fp=chrome&path=%2F${_stealth_path}%2F&encryption=none#MoaV-Stealth-${USER_ID}"
 
     echo "$XHTTP_LINK" > "$OUTPUT_DIR/xhttp-vless.txt"
 
@@ -423,37 +423,96 @@ if [[ "${ENABLE_XHTTP:-true}" == "true" ]]; then
         qrencode -o "$OUTPUT_DIR/xhttp-qr.png" -s 6 -m 2 "$XHTTP_LINK"
     fi
 
+    # Generate full Xray JSON client config (with pinnedPeerCertSha256)
+    if [[ -n "${STEALTH_CERT_HASH:-}" ]]; then
+      cat > "$OUTPUT_DIR/xhttp-client.json" <<XJSONEOF
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [{
+    "tag": "socks",
+    "port": 10808,
+    "listen": "127.0.0.1",
+    "protocol": "socks",
+    "settings": { "udp": true }
+  }, {
+    "tag": "http",
+    "port": 10809,
+    "listen": "127.0.0.1",
+    "protocol": "http"
+  }],
+  "outbounds": [{
+    "protocol": "vless",
+    "settings": {
+      "vnext": [{
+        "address": "${SERVER_IP}",
+        "port": ${_stealth_port},
+        "users": [{
+          "id": "${USER_UUID}",
+          "encryption": "none",
+          "flow": ""
+        }]
+      }]
+    },
+    "streamSettings": {
+      "network": "xhttp",
+      "xhttpSettings": {
+        "mode": "auto",
+        "path": "/${_stealth_path}/"
+      },
+      "security": "tls",
+      "tlsSettings": {
+        "serverName": "${_stealth_cn}",
+        "pinnedPeerCertSha256": ["${STEALTH_CERT_HASH}"],
+        "fingerprint": "chrome"
+      }
+    },
+    "tag": "proxy"
+  }],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [{
+      "type": "field",
+      "ip": ["geoip:private"],
+      "outboundTag": "direct"
+    }]
+  }
+}
+XJSONEOF
+    fi
+
     # Generate human-readable text file
     cat > "$OUTPUT_DIR/xhttp.txt" <<EOF
-XHTTP (VLESS+XHTTP+Reality) Configuration for $USER_ID
-=======================================================
+XHTTP Stealth (VLESS+XHTTP+TLS) Configuration for $USER_ID
+============================================================
 
-Protocol: VLESS + XHTTP + Reality (via Xray-core)
+Protocol: VLESS + XHTTP + TLS Stealth (via Xray-core + Caddy)
 Server: ${SERVER_IP}
-Port: ${_xhttp_port}
+Port: ${_stealth_port}
 UUID: ${USER_UUID}
-SNI: ${_xhttp_target_host}
-Reality Public Key: ${REALITY_PUBLIC_KEY}
-Short ID: ${REALITY_SHORT_ID}
+TLS CN: ${_stealth_cn}
+Path: /${_stealth_path}/
+Cert Pin (SHA256): ${STEALTH_CERT_HASH:-N/A}
 Fingerprint: chrome
 Transport: xhttp
+Anti-Probe: Caddy TLS frontend with static decoy fallback
 
 Share Link:
 ${XHTTP_LINK}
 
 Client Apps:
 - Android: V2rayNG, Hiddify
-- iOS: Streisand, V2Box
+- iOS: Streisand, V2Box, Happ
 - Windows: Hiddify, V2rayN
 - macOS: V2rayU, Hiddify
 
 Instructions:
 1. Install a compatible client app
 2. Import using the share link above or scan the QR code
+   (For full security including cert pin, import xhttp-client.json)
 3. Connect
 EOF
 
-    log_info "  - XHTTP config generated"
+    log_info "  - XHTTP Stealth config generated"
   fi
 fi
 
